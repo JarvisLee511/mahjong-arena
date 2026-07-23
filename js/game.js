@@ -461,6 +461,92 @@
       this.result = { type: 'draw' }; // 流局
     }
 
+    exportState() {
+      const pendingAddKong = this.pendingAddKong ? {
+        player: this.pendingAddKong.player,
+        tile: this.pendingAddKong.tile,
+        meldIndex: this.players[this.pendingAddKong.player].melds.indexOf(this.pendingAddKong.meld),
+      } : null;
+      return JSON.parse(JSON.stringify({
+        version: 1,
+        dealerIndex: this.dealerIndex,
+        roundWind: this.roundWind,
+        streak: this.streak,
+        allowMultiHu: this.allowMultiHu,
+        swapMode: this.swapMode,
+        aiLevel: this._aiLevel,
+        wall: this.wall,
+        front: this.front,
+        back: this.back,
+        players: this.players,
+        turn: this.turn,
+        phase: this.phase,
+        lastDiscard: this.lastDiscard,
+        pendingClaims: this.pendingClaims,
+        pendingAddKong,
+        mustDiscardAfterClaim: this.mustDiscardAfterClaim,
+        result: this.result,
+        log: this.log,
+        firstGoAround: this.firstGoAround,
+        kongPending: this.kongPending,
+        furiten: this.furiten,
+        ready: this.ready,
+        wallStartFront: this.wallStartFront,
+        wallStartBack: this.wallStartBack,
+        wallStart: this.wallStart,
+        swapRound: this.swapRound,
+        swapSel: this.swapSel || {},
+        finishHandled: !!this._finishHandled,
+      }));
+    }
+
+    static fromState(raw, opts = {}) {
+      const state = JSON.parse(JSON.stringify(raw || null));
+      if (!state || state.version !== 1 || !Array.isArray(state.wall) || state.wall.length !== 144 ||
+          !Array.isArray(state.players) || state.players.length !== 4 ||
+          !['act', 'claim', 'swap', 'over'].includes(state.phase)) {
+        throw new Error('invalid saved game');
+      }
+      const game = Object.create(Game.prototype);
+      game.rng = opts.rng || Math.random;
+      game.onEvent = opts.onEvent || null;
+      game.dealerIndex = state.dealerIndex;
+      game.roundWind = state.roundWind;
+      game.streak = state.streak;
+      game.allowMultiHu = state.allowMultiHu !== false;
+      game.swapMode = !!state.swapMode;
+      game._aiLevel = state.aiLevel || 'normal';
+      game.wall = state.wall;
+      game.front = state.front;
+      game.back = state.back;
+      game.players = state.players;
+      game.turn = state.turn;
+      game.phase = state.phase;
+      game.lastDiscard = state.lastDiscard || null;
+      game.pendingClaims = state.pendingClaims || null;
+      game.mustDiscardAfterClaim = !!state.mustDiscardAfterClaim;
+      game.result = state.result || null;
+      game.log = state.log || [];
+      game.firstGoAround = !!state.firstGoAround;
+      game.kongPending = !!state.kongPending;
+      game.furiten = state.furiten || [false, false, false, false];
+      game.ready = state.ready || [null, null, null, null];
+      game.wallStartFront = state.wallStartFront;
+      game.wallStartBack = state.wallStartBack;
+      game.wallStart = state.wallStart;
+      game.swapRound = state.swapRound;
+      game.swapSel = state.swapSel || {};
+      game._finishHandled = !!state.finishHandled;
+      game.pendingAddKong = null;
+      if (state.pendingAddKong) {
+        const player = game.players[state.pendingAddKong.player];
+        const meld = player && player.melds[state.pendingAddKong.meldIndex];
+        if (!meld) throw new Error('invalid saved kong');
+        game.pendingAddKong = { player: state.pendingAddKong.player, tile: state.pendingAddKong.tile, meld };
+      }
+      return game;
+    }
+
     // snapshot for UI / networking (host-authoritative)
     snapshot() {
       return {

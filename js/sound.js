@@ -59,7 +59,8 @@
     pung: '碰', kong: '槓', chow: '吃', hu: '胡啦', tsumo: '自摸',
     draw: '流局', tenpai: '聽牌', start: '開始',
   };
-  const BOOSTED_RECORDED_CLAIMS = new Set(['pung', 'kong', 'chow', 'hu']);
+  const BOOSTED_RECORDED_CLAIMS = new Set(['pung', 'kong', 'chow', 'hu', 'tsumo']);
+  const RECORDED_VOICE_VOLUME = 0.33;
   const clips = {};            // key -> HTMLAudioElement
   const boostedSources = new WeakMap();
   let boostedGain = null, boostedLimiter = null;
@@ -73,7 +74,7 @@
     try {
       if (!boostedGain) {
         boostedGain = a.createGain();
-        boostedGain.gain.value = 3;
+        boostedGain.gain.value = 4.5;
         boostedLimiter = a.createDynamicsCompressor();
         boostedLimiter.threshold.value = -6;
         boostedLimiter.knee.value = 0;
@@ -103,7 +104,7 @@
         (files || []).forEach((f) => {
           const key = String(f).replace(/\.[^.]+$/, '');
           const a = new Audio('assets/audio/' + f); a.preload = 'auto';
-          a.volume = BOOSTED_RECORDED_CLAIMS.has(key) ? 1 : 0.95;
+          a.volume = BOOSTED_RECORDED_CLAIMS.has(key) ? 1 : RECORDED_VOICE_VOLUME;
           clips[key] = a;
         });
       })
@@ -125,7 +126,7 @@
     if (!enabled) return;
     const a = clips[code];
     if (a) { try { a.currentTime = 0; a.play(); return; } catch (e) {} }
-    if (spoken) say(spoken);
+    if (spoken) say(spoken, 0.3);
   }
 
   // Chinese TTS: 報牌 / 碰 / 槓 / 胡啦
@@ -149,8 +150,20 @@
 
   // ---- background music (原創,零版權) -------------------------
   // 'lobby' = 戲劇賭場氛圍(賭神那種感覺,原創);'game' = 中國風輕音樂(音量壓低於人聲)。
-  // 若 assets/music/ 有對應檔(lobby.* / game.*)且列在 manifest.json 則優先播該檔。
+  // 兩條音軌在載入腳本時先建立，手機上的第一次手勢可直接 play，不需等待 fetch。
+  const BGM_FILES = { lobby: 'lobby.mp3', game: 'game.mp3' };
+  const bgmTracks = {};
+  if (typeof Audio !== 'undefined') {
+    Object.keys(BGM_FILES).forEach((kind) => {
+      const audio = new Audio('assets/music/' + BGM_FILES[kind]);
+      audio.preload = 'auto';
+      audio.loop = true;
+      try { audio.load(); } catch (e) {}
+      bgmTracks[kind] = audio;
+    });
+  }
   let bgmOn = false, bgmKind = null, bgmAudio = null, bgmTimer = null, bgmGain = null;
+  let bgmGeneration = 0;
   function mkNote(freq, when, dur, type, gain, cutoff) {
     const a = ac(); if (!a || !bgmGain) return;
     const o = a.createOscillator(), g = a.createGain(), f = a.createBiquadFilter();
@@ -162,12 +175,12 @@
     o.start(when); o.stop(when + dur + 0.05);
   }
   // 首頁:戲劇性小調賭場氛圍(Dm–B♭–C–A,原創進行)
-  function lobbyLoop(a) {
+  function lobbyLoop(a, generation) {
     const BASS = [73.42, 58.27, 65.41, 55.00];   // D2 B♭1 C2 A1
     const CH = [[293.66, 349.23, 440.00], [233.08, 349.23, 466.16], [261.63, 392.00, 523.25], [277.18, 329.63, 440.00]];
     const beat = 0.5; let bar = 0;
     (function sch() {
-      if (!bgmOn || bgmKind !== 'lobby') return;
+      if (!bgmOn || bgmKind !== 'lobby' || generation !== bgmGeneration) return;
       const t0 = a.currentTime + 0.05, bassF = BASS[bar % 4], notes = CH[bar % 4];
       for (let b = 0; b < 4; b++) mkNote(bassF, t0 + b * beat, 0.44, 'sawtooth', 0.5, 420);   // 低音脈動
       notes.forEach((f) => mkNote(f, t0, beat * 3.6, 'sawtooth', 0.10, 1150));                 // 銅管襯底
@@ -177,45 +190,53 @@
     })();
   }
   // 遊戲中:中國風五聲音階輕音樂(古箏感撥弦 + 柔和低鳴,原創)
-  function gameLoop(a) {
+  function gameLoop(a, generation) {
     const R = 0; // 休止
     const MEL = [392.00, 440.00, 523.25, 440.00, 392.00, 329.63, 392.00, R, 293.66, 329.63, 392.00, 329.63, 293.66, 261.63, R, R];
     const DRONE = [130.81, 196.00]; // C3 G3
     const beat = 0.42; let i = 0;
     (function sch() {
-      if (!bgmOn || bgmKind !== 'game') return;
+      if (!bgmOn || bgmKind !== 'game' || generation !== bgmGeneration) return;
       const t0 = a.currentTime + 0.05, f = MEL[i % MEL.length];
       if (f) { mkNote(f, t0, 0.5, 'triangle', 0.5, 2600); mkNote(f * 2, t0, 0.32, 'sine', 0.14, 4200); }
       if (i % 8 === 0) DRONE.forEach((d) => mkNote(d, t0, beat * 8, 'sine', 0.22, 520));
       i++; bgmTimer = setTimeout(sch, beat * 1000);
     })();
   }
-  function startSynth(kind) {
+  function startSynth(kind, generation) {
+    if (!bgmOn || bgmKind !== kind || generation !== bgmGeneration) return;
     const a = ac(); if (!a) return;
     bgmGain = a.createGain();
     bgmGain.gain.value = kind === 'game' ? 0.023 : 0.16;   // 遊戲中極淡,遠低於吃碰人聲
     bgmGain.connect(a.destination);
-    (kind === 'game' ? gameLoop : lobbyLoop)(a);
+    (kind === 'game' ? gameLoop : lobbyLoop)(a, generation);
   }
   function bgmStart(kind) {
     kind = kind || 'lobby';
     if (!enabled || (bgmOn && bgmKind === kind)) return;
     bgmStop(); bgmOn = true; bgmKind = kind; ac();
-    fetch('assets/music/manifest.json', { cache: 'no-store' })
-      .then((r) => (r.ok ? r.json() : [])).then((list) => {
-        if (!bgmOn || bgmKind !== kind) return;
-        const file = (list || []).find((x) => String(x).replace(/\.[^.]+$/, '') === kind);
-        if (file) {
-          bgmAudio = new Audio('assets/music/' + file); bgmAudio.loop = true;
-          bgmAudio.volume = kind === 'game' ? 0.081 : 0.5;   // 中國風再降,更淡
-          bgmAudio.play().catch(() => startSynth(kind));
-        } else startSynth(kind);
-      }).catch(() => startSynth(kind));
+    const generation = bgmGeneration;
+    const audio = bgmTracks[kind];
+    if (!audio) { startSynth(kind, generation); return; }
+    bgmAudio = audio;
+    bgmAudio.volume = kind === 'game' ? 0.081 : 0.5;   // 中國風再降,更淡
+    try { bgmAudio.currentTime = 0; } catch (e) {}
+    let playback;
+    try { playback = bgmAudio.play(); }
+    catch (e) { startSynth(kind, generation); return; }
+    if (playback && typeof playback.catch === 'function') {
+      playback.catch(() => {
+        if (!bgmOn || bgmKind !== kind || generation !== bgmGeneration || bgmAudio !== audio) return;
+        startSynth(kind, generation);
+      });
+    }
   }
   function bgmStop() {
+    bgmGeneration++;
     bgmOn = false; bgmKind = null;
     if (bgmTimer) { clearTimeout(bgmTimer); bgmTimer = null; }
-    if (bgmAudio) { try { bgmAudio.pause(); } catch (e) {} bgmAudio = null; }
+    Object.keys(bgmTracks).forEach((kind) => { try { bgmTracks[kind].pause(); } catch (e) {} });
+    bgmAudio = null;
     if (bgmGain) { try { bgmGain.gain.value = 0; } catch (e) {} bgmGain = null; }
   }
 

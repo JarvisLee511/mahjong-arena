@@ -29,7 +29,8 @@
 
   const clientId = Math.random().toString(36).slice(2, 10);
   let role = null, code = null, channel = null, supa = null;
-  let onMsg = null, reconnecting = null, messageSeq = 0;
+  let onMsg = null, reconnecting = null, messageSeq = 0, resumeTimer = null, reconnectTimer = null;
+  let reconnectAttempts = 0;
   const seenMessages = new Set(), seenOrder = [];
 
   function normalizeRoomCode(value) {
@@ -68,8 +69,8 @@
 
   async function send(type, payload, to) {
     const msg = { id: clientId + '-' + (++messageSeq), type, from: clientId, to: to || null, payload };
+    if (isSupa() && (!channel || channel.state !== 'joined') && !(await ensureConnected())) return false;
     if (!channel) return false;
-    if (isSupa() && channel.state !== 'joined' && !(await ensureConnected())) return false;
     if (await deliver(msg)) return true;
     // A server acknowledgement can time out during a mobile network handoff.
     // Retrying the same id is safe because receivers de-duplicate it.
@@ -104,28 +105,34 @@
       }
       const ch = supa.channel('mahjong-' + room, { config: { broadcast: { self: false, ack: true } } });
       ch.on('broadcast', { event: 'm' }, ({ payload }) => handle(payload));
+      channel = ch;
       try {
         await new Promise((resolve, reject) => {
           const to = setTimeout(() => reject(new Error('連線逾時(realtime 無回應)')), 12000);
           ch.subscribe((status, err) => {
             if (status === 'SUBSCRIBED') { clearTimeout(to); resolve(); }
-            else if (['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED'].includes(status)) { clearTimeout(to); reject(err || new Error(status)); }
+            else if (['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED'].includes(status)) {
+              clearTimeout(to); reject(err || new Error(status));
+              if (channel === ch && role) scheduleReconnect();
+            }
           });
         });
       } catch (e) {
+        if (channel === ch) channel = null;
         try { await supa.removeChannel(ch); } catch (removeError) {}
         throw e;
       }
-      channel = ch;
     } else {
+      try { if (channel) channel.close(); } catch (e) {}
       channel = new BroadcastChannel('mj_room_' + room);
       channel.onmessage = (e) => handle(e.data);
     }
   }
 
   async function ensureConnected(force) {
-    if (!isSupa() || !code) return !!channel;
-    if (!force && channel && channel.state === 'joined') return true;
+    if (!code) return false;
+    if (!isSupa() && !force) return !!channel;
+    if (isSupa() && !force && channel && channel.state === 'joined') return true;
     if (reconnecting) return reconnecting;
     reconnecting = (async () => {
       try {
@@ -139,13 +146,37 @@
   async function resumeConnection() {
     // Re-open even when the client still reports "joined": mobile browsers can
     // preserve that stale state after suspending the WebSocket in background.
-    if (!(await ensureConnected(true))) return;
+    if (!role || !code) return false;
+    if (!(await ensureConnected(true))) {
+      scheduleReconnect(Math.min(10000, 600 * Math.pow(2, Math.min(reconnectAttempts++, 4))));
+      return false;
+    }
+    reconnectAttempts = 0;
     if (role === 'guest') await send('rejoin', {});
     else if (role === 'host') await send('host-rejoin', {});
+    return true;
+  }
+  function scheduleReconnect(delay = 600) {
+    if (!role || !code) return;
+    clearTimeout(reconnectTimer);
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      if (role && code) resumeConnection();
+    }, delay);
+  }
+  function scheduleResume() {
+    if (!role || !code) return;
+    clearTimeout(resumeTimer);
+    resumeTimer = setTimeout(() => {
+      resumeTimer = null;
+      if (role && code) resumeConnection();
+    }, 120);
   }
   if (typeof document !== 'undefined') {
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) resumeConnection(); });
-    window.addEventListener('online', resumeConnection);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) scheduleResume(); });
+    window.addEventListener('online', scheduleResume);
+    window.addEventListener('focus', scheduleResume);
+    window.addEventListener('pageshow', scheduleResume);
   }
 
   const MJNet = {
@@ -160,10 +191,19 @@
       if (code.length !== 6) throw new Error('房號必須是 6 碼');
       await openChannel(code); return code;
     },
+    async restore(room, savedRole, handler) {
+      const normalized = normalizeRoomCode(room);
+      if (normalized.length !== 6 || !['host', 'guest'].includes(savedRole)) throw new Error('invalid saved room');
+      role = savedRole; onMsg = handler; code = normalized;
+      await openChannel(code); return code;
+    },
     send,
+    resume: resumeConnection,
     to(cid, type, payload) { return send(type, payload, cid); },
     leave() {
       role = null; code = null; onMsg = null;
+      reconnectAttempts = 0;
+      clearTimeout(resumeTimer); clearTimeout(reconnectTimer);
       try { if (isSupa() && channel) supa.removeChannel(channel); else if (channel) channel.close(); } catch (e) {}
       channel = null;
     },

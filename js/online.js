@@ -13,6 +13,7 @@
   const CLAIM_TIMEOUT = 9000;   // auto-pass a slow human claimer
   const ACT_TIMEOUT = 20000;    // remote fallback prevents a disconnected seat freezing the hand
   const SWAP_TIMEOUT = 15000;
+  const savedOnline = window.MJSession && window.MJSession.load();
 
   let mode = null;              // 'host' | 'guest'
   let G = null;
@@ -29,8 +30,42 @@
   // guest
   let mySeat = null, myName = '';
   let joinStatus = null, joinTimer = null;   // 'connecting' | 'seated' | 'failed'
+  let joinFailureReason = '', joinRejected = false, rejoinTimer = null, rejoinGeneration = 0, lastGuestView = null;
+  let restoringSession = false, guestOnlineReady = false;
+  let playerToken = savedOnline && savedOnline.kind === 'online' && savedOnline.playerToken
+    ? savedOnline.playerToken
+    : (window.MJSession ? window.MJSession.token() : Date.now().toString(36) + Math.random().toString(36).slice(2));
 
   const cfg = () => window.MJSolo.cfg;
+  const clone = (value) => value == null ? value : JSON.parse(JSON.stringify(value));
+
+  function saveOnlineSession() {
+    if (!mode || !window.MJSession || !window.MJNet.code) return;
+    window.MJSession.save({
+      kind: 'online', role: mode, room: window.MJNet.code, playerToken,
+      mySeat, myName, started, inTable: !!($('#app') && $('#app').classList.contains('on')),
+      cfg: Object.assign({}, cfg()), lastView: mode === 'guest' ? clone(lastGuestView) : null,
+      scores: scores.slice(), dealerIndex, streak, roundWind, dealerPasses,
+      sessionStats: clone(sessionStats), seats: mode === 'host' ? clone(seats) : null,
+      game: mode === 'host' && G ? G.exportState() : null,
+    });
+  }
+
+  function leaveOnline() {
+    clearTimeout(joinTimer); clearTimeout(rejoinTimer); clearTimeout(claimTimer);
+    if (window.MJLeaveGame) window.MJLeaveGame();
+    else {
+      if (window.MJSession) { window.MJSession.clear(); window.MJSession.setScene('lobby'); }
+      window.MJNet.leave(); location.reload();
+    }
+  }
+
+  function startGameAudio() {
+    MJSound.bgmStop();
+    if (window.__lobbyFX) window.__lobbyFX.stop();
+    const mb = $('#btnMusic');
+    if (!mb || mb.dataset.on !== '0') MJSound.bgmStart('game');
+  }
 
   // ============================================================
   //  ROOM (waiting) overlay
@@ -49,6 +84,7 @@
     hideRoom();
     $('#lobby').style.display = 'none';
     $('#app').classList.add('on');
+    if (window.MJSession) window.MJSession.setScene('game');
     window.MJView.prepareTableLayout();
     $('#btnAuto').style.display = 'none';
   }
@@ -91,19 +127,20 @@
       if (mySeat != null) {
         card.appendChild(el('div', 'hint room-state', '已入座,等待房主開始…'));
       } else if (joinStatus === 'failed') {
-        const w = el('div', 'hint room-state error', '暫時找不到房主(房號 ' + window.MJNet.code + ')，系統仍會自動重試。請確認:①房號輸入正確 ②房主已按「建立房間」並停留在房間畫面 ③雙方網路正常。');
+        const w = el('div', 'hint room-state error', joinFailureReason || ('暫時找不到房主(房號 ' + window.MJNet.code + ')，系統仍會自動重試。請確認:①房號輸入正確 ②房主已按「建立房間」並停留在房間畫面 ③雙方網路正常。'));
         card.appendChild(w);
         const retry = el('button', 'btn room-start', '重新嘗試加入');
-        retry.addEventListener('click', () => { joinStatus = 'connecting'; renderRoom(); startJoinHandshake(); });
+        retry.addEventListener('click', () => { joinRejected = false; joinFailureReason = ''; joinStatus = 'connecting'; renderRoom(); startJoinHandshake(); });
         card.appendChild(retry);
       } else {
         card.appendChild(el('div', 'hint room-state', '連線中… 正在尋找房主(房號 ' + window.MJNet.code + ')'));
       }
     }
     const leave = el('button', 'btn ghost room-leave', '離開房間');
-    leave.addEventListener('click', () => location.reload());
+    leave.addEventListener('click', leaveOnline);
     card.appendChild(leave);
     o.appendChild(card);
+    saveOnlineSession();
   }
 
   // ============================================================
@@ -113,6 +150,7 @@
   function isAI(p) { return !!(seats[p] && seats[p].ai); }
   function cidOf(p) { return seats[p] && seats[p].cid; }
   function seatOfCid(cid) { return seats.findIndex((s) => s && s.cid === cid); }
+  function seatOfToken(token) { return token ? seats.findIndex((s) => s && s.token === token) : -1; }
 
   function buildView(forSeat) {
     const snap = G.snapshot();
@@ -167,6 +205,7 @@
     for (let p = 1; p <= 3; p++) {
       if (cidOf(p)) window.MJNet.to(cidOf(p), G.phase === 'over' ? 'result' : 'view', buildView(p));
     }
+    saveOnlineSession();
   }
 
   // ============================================================
@@ -179,15 +218,16 @@
   };
 
   function hostStartGame() {
+    if (started) return;
     started = true;
     for (let p = 1; p <= 3; p++) if (!seats[p] || !seats[p].cid) seats[p] = { seat: p, ai: true, name: NAMES_AI[p] + ' 🤖' };
     // tell guests we begin
     window.MJNet.send('begin', { roster: seats.map((s) => ({ seat: s.seat, name: s.name, ai: !!s.ai })) });
-    MJSound.bgmStop(); if (window.__lobbyFX) window.__lobbyFX.stop();
-    const mb = $('#btnMusic'); if (!mb || mb.dataset.on !== '0') MJSound.bgmStart('game');
+    startGameAudio();
     enterTable();
     scores = [0, 0, 0, 0]; dealerIndex = 0; streak = 0; roundWind = 'z1'; dealerPasses = 0;
     sessionStats = [0, 1, 2, 3].map(() => ({ hu: 0, tsumo: 0, dealIn: 0 }));
+    saveOnlineSession();
     window.MJNet.send('dice', { name: nameOf(dealerIndex) });   // ⑧ 擲骰決莊(客人同步)
     window.MJView.rollDealer(nameOf(dealerIndex), hostStartHand);
   }
@@ -199,6 +239,7 @@
     window.MJView.rollDice();
     window.MJNet.send('flash', { fx: 'deal' });
     MJSound.fx('deal');
+    saveOnlineSession();
     setTimeout(hostAdvance, 480);
   }
 
@@ -316,12 +357,27 @@
     else pushViews();
   }
 
+  function showHostResult(playAnimation) {
+    const r = G.result;
+    const target = cfg().len === 'game' ? 16 : 4;
+    const cont = dealerPasses >= target ? hostNewRound : hostStartHand;
+    const show = () => window.MJView.showResult(buildView(0), cont, true);
+    if (playAnimation && r.type === 'win') window.MJView.playWinAnim(r.selfDraw ? 'tsumo' : 'hu', show);
+    else show();
+  }
+
   function hostFinish() {
-    if (!G || G._finishHandled) return;
-    G._finishHandled = true;
+    if (!G || !G.result) return;
     clearTimeout(claimTimer);
     window.MJView.clearSelection();
     const r = G.result;
+    if (G._finishHandled) {
+      saveOnlineSession();
+      for (let p = 1; p <= 3; p++) if (cidOf(p)) window.MJNet.to(cidOf(p), 'result', buildView(p));
+      showHostResult(false);
+      return;
+    }
+    G._finishHandled = true;
     if (r.type === 'draw') { MJSound.fx('lose'); MJSound.voice('draw'); window.MJNet.send('flash', { text: '流局', fx: 'lose', voice: 'draw' }); streak++; }
     else {
       const [sb, st] = (cfg().stake || '30/10').split('/').map(Number); let dealerKept = false;
@@ -338,16 +394,16 @@
       r.winHand = { melds: wp.melds, hand: wp.hand.slice() };
       if (dealerKept) streak++; else { dealerIndex = (dealerIndex + 1) & 3; streak = 0; dealerPasses++; }
     }
-    const target = cfg().len === 'game' ? 16 : 4;
-    const cont = dealerPasses >= target ? hostNewRound : hostStartHand;   // 打完賽制 → 開新賽
+    saveOnlineSession();
     // push final views (with updated scores) to guests + show locally
     for (let p = 1; p <= 3; p++) if (cidOf(p)) window.MJNet.to(cidOf(p), 'result', buildView(p));
-    if (r.type === 'win') window.MJView.playWinAnim(r.selfDraw ? 'tsumo' : 'hu', () => window.MJView.showResult(buildView(0), cont, true));
-    else window.MJView.showResult(buildView(0), cont, true);
+    showHostResult(true);
   }
   function hostNewRound() {
     scores = [0, 0, 0, 0]; dealerIndex = 0; streak = 0; dealerPasses = 0;
     sessionStats = [0, 1, 2, 3].map(() => ({ hu: 0, tsumo: 0, dealIn: 0 }));
+    G = null;
+    saveOnlineSession();
     window.MJNet.send('dice', { name: nameOf(dealerIndex) });
     window.MJView.rollDealer(nameOf(dealerIndex), hostStartHand);
   }
@@ -355,15 +411,25 @@
   // ---------- host message handler --------------------------
   function hostOnMsg(type, payload, from) {
     if (type === 'join') {
-      if (started) { window.MJNet.to(from, 'full', {}); return; }
-      // reconnect: if this cid already holds a seat, just re-welcome it
-      let seat = seatOfCid(from);
+      payload = payload || {};
+      const token = String(payload.token || '');
+      let seat = seatOfToken(token);
+      if (seat === 0) seat = -1;
+      if (seat < 0) seat = seatOfCid(from);
+      if (started && seat < 0) { window.MJNet.to(from, 'full', {}); return; }
       if (seat < 0) { for (let i = 1; i <= 3; i++) { if (!seats[i] || (!seats[i].cid && !seats[i].ai)) { seat = i; break; } } }
       if (seat < 0) { window.MJNet.to(from, 'full', {}); return; }
-      seats[seat] = { seat, cid: from, name: payload.name || ('玩家' + seat), ai: false };
+      const previous = seats[seat] || {};
+      seats[seat] = {
+        seat, cid: from, token: token || previous.token,
+        name: payload.name || previous.name || ('玩家' + seat), ai: false,
+      };
+      saveOnlineSession();
       window.MJNet.to(from, 'welcome', { seat, roster: rosterMsg() });
       window.MJNet.send('roster', { roster: rosterMsg() });
-      renderRoom();
+      if (G) window.MJNet.to(from, G.phase === 'over' ? 'result' : 'view', buildView(seat));
+      else if (started) window.MJNet.to(from, 'begin', { roster: rosterMsg() });
+      else renderRoom();
     } else if (type === 'act') {
       const seat = seatOfCid(from); if (seat > 0) applyActFor(seat, payload.action);
     } else if (type === 'claim') {
@@ -374,10 +440,21 @@
       onEmote(payload);
     } else if (type === 'rejoin') {
       // a guest reconnected mid-game → resend their current view
-      const seat = seatOfCid(from);
-      if (seat > 0 && G) window.MJNet.to(from, G.phase === 'over' ? 'result' : 'view', buildView(seat));
-      else if (seat > 0) window.MJNet.to(from, 'welcome', { seat, roster: rosterMsg() });
-      else if (!started) window.MJNet.to(from, 'host-rejoin', {});
+      payload = payload || {};
+      let seat = seatOfToken(payload.token);
+      if (seat === 0) seat = -1;
+      if (seat < 0) seat = seatOfCid(from);
+      if (seat > 0) {
+        seats[seat].cid = from;
+        if (payload.token) seats[seat].token = payload.token;
+        if (payload.name) seats[seat].name = payload.name;
+        seats[seat].ai = false;
+        saveOnlineSession();
+        window.MJNet.to(from, 'welcome', { seat, roster: rosterMsg() });
+        if (G) window.MJNet.to(from, G.phase === 'over' ? 'result' : 'view', buildView(seat));
+        else if (started) window.MJNet.to(from, 'begin', { roster: rosterMsg() });
+      } else if (!started) window.MJNet.to(from, 'host-rejoin', {});
+      else window.MJNet.to(from, 'full', {});
     }
   }
   function rosterMsg() { return [0, 1, 2, 3].map((i) => { const s = seats[i]; return s ? { seat: i, name: s.name, ai: !!s.ai } : { seat: i }; }); }
@@ -385,12 +462,54 @@
   // ============================================================
   //  GUEST
   // ============================================================
+  async function sendGuestIntent(type, payload) {
+    if (!guestOnlineReady) {
+      window.MJView.toast('正在恢復連線，請稍候');
+      startRejoinHandshake();
+      return;
+    }
+    guestOnlineReady = false;
+    disableBar();
+    const sent = await window.MJNet.send(type, payload);
+    if (sent) return;
+    if (lastGuestView) {
+      const stale = clone(lastGuestView); stale.mySeat = mySeat;
+      window.MJView.renderView(stale, guestHandlers);
+      disableBar();
+    }
+    window.MJView.toast('連線中斷，正在回到牌局');
+    startRejoinHandshake();
+  }
+
   const guestHandlers = {
-    onAct(action) { window.MJNet.send('act', { action }); disableBar(); },
-    onClaim(action) { window.MJNet.send('claim', { action }); disableBar(); },
-    onSwap(tiles) { window.MJNet.send('swap', { tiles }); disableBar(); },
+    onAct(action) { sendGuestIntent('act', { action }); },
+    onClaim(action) { sendGuestIntent('claim', { action }); },
+    onSwap(tiles) { sendGuestIntent('swap', { tiles }); },
   };
   function disableBar() { [...document.querySelectorAll('#actions .act-btn')].forEach((b) => b.disabled = true); }
+
+  function stopRejoinHandshake() {
+    rejoinGeneration++;
+    clearTimeout(rejoinTimer); rejoinTimer = null;
+    restoringSession = false;
+  }
+
+  function acceptGuestView(payload, isResult) {
+    stopRejoinHandshake();
+    joinStatus = 'seated'; guestOnlineReady = true;
+    lastGuestView = clone(payload);
+    if (!$('#app').classList.contains('on')) { startGameAudio(); enterTable(); }
+    const v = clone(payload); v.mySeat = mySeat;
+    if (!isResult) {
+      window.MJView.hideResult();
+      window.MJView.renderView(v, guestHandlers);
+    } else {
+      window.MJView.renderView(v, guestHandlers);
+      if (v.result && v.result.type === 'win') window.MJView.playWinAnim(v.result.selfDraw ? 'tsumo' : 'hu', () => window.MJView.showResult(v, null, false));
+      else if (v.result) window.MJView.showResult(v, null, false);
+    }
+    saveOnlineSession();
+  }
 
   // ⑩ 線上喊話:廣播 {seat,text},各端依自己座位換算位置顯示
   function selfSeat() { return mode === 'host' ? 0 : (mySeat == null ? 0 : mySeat); }
@@ -398,20 +517,28 @@
   function onEmote(payload) { window.MJView.showBubble(((payload.seat - selfSeat()) + 4) & 3, payload.text); }
 
   function guestOnMsg(type, payload) {
-    if (type === 'welcome') { mySeat = payload.seat; joinStatus = 'seated'; clearTimeout(joinTimer); window._guestRoster = payload.roster; renderRoom(); }
-    else if (type === 'roster') { window._guestRoster = payload.roster; renderRoom(); }
-    else if (type === 'full') { alert('房間已滿或已開打 🙇'); location.reload(); }
-    else if (type === 'begin') { MJSound.bgmStop(); if (window.__lobbyFX) window.__lobbyFX.stop(); const mb = $('#btnMusic'); if (!mb || mb.dataset.on !== '0') MJSound.bgmStart('game'); enterTable(); }
-    else if (type === 'view') {
-      const v = payload; v.mySeat = mySeat;
-      window.MJView.hideResult();
-      window.MJView.renderView(v, guestHandlers);
+    if (type === 'welcome') {
+      mySeat = payload.seat; joinStatus = 'seated'; joinFailureReason = '';
+      clearTimeout(joinTimer);
+      window._guestRoster = payload.roster;
+      if (!$('#app').classList.contains('on')) { stopRejoinHandshake(); renderRoom(); }
+      else saveOnlineSession();
     }
-    else if (type === 'result') {
-      const v = payload; v.mySeat = mySeat; window.MJView.renderView(v, guestHandlers);
-      if (v.result && v.result.type === 'win') window.MJView.playWinAnim(v.result.selfDraw ? 'tsumo' : 'hu', () => window.MJView.showResult(v, null, false));
-      else if (v.result) window.MJView.showResult(v, null, false);
+    else if (type === 'roster') {
+      window._guestRoster = payload.roster;
+      if (!$('#app').classList.contains('on')) renderRoom();
+      else saveOnlineSession();
     }
+    else if (type === 'full') {
+      clearTimeout(joinTimer); stopRejoinHandshake(); guestOnlineReady = false;
+      joinStatus = 'failed'; joinRejected = true;
+      joinFailureReason = '這個房間已滿，或房主已開打且無法驗證你的原座位。';
+      if ($('#app').classList.contains('on')) window.MJView.toast('無法恢復原座位，請離開後重新加入');
+      else renderRoom();
+    }
+    else if (type === 'begin') { startGameAudio(); enterTable(); guestOnlineReady = false; saveOnlineSession(); }
+    else if (type === 'view') acceptGuestView(payload, false);
+    else if (type === 'result') acceptGuestView(payload, true);
     else if (type === 'flash') {
       if (payload.text) window.MJView.toast(payload.text);
       if (payload.fx) MJSound.fx(payload.fx);
@@ -421,7 +548,7 @@
     else if (type === 'host-rejoin') {
       if (mySeat == null) {
         joinStatus = 'connecting'; renderRoom(); startJoinHandshake();
-      } else window.MJNet.send('rejoin', {});
+      } else startRejoinHandshake();
     }
     else if (type === 'emote') { onEmote(payload); }
     else if (type === 'dice') { window.MJView.rollDealer(payload.name, () => {}); }
@@ -443,13 +570,16 @@
   });
   $('#btnCreate').addEventListener('click', async () => {
     MJSound.unlock(); mode = 'host';
-    seats = [{ seat: 0, cid: window.MJNet.clientId, name: myNick() || '房主', ai: false }];
+    seats = [{ seat: 0, cid: window.MJNet.clientId, token: playerToken, name: myNick() || '房主', ai: false }];
     try {
       await window.MJNet.create(hostOnMsg);
       window.__onlineEmote = onlineEmote;
       $('#pillCode').textContent = '房號 ' + window.MJNet.code; $('#pillCode').style.display = '';
       renderRoom();
-    } catch (e) { alert('開房失敗:' + (e.message || e) + '\n可先用單機,或連線稍後再試。'); }
+    } catch (e) {
+      window.MJNet.leave(); mode = null;
+      alert('開房失敗:' + (e.message || e) + '\n可先用單機,或連線稍後再試。');
+    }
   });
 
   // 持續向房主敲門,直到入座或逾時(涵蓋房主稍晚上線/行動網路較慢的時序)
@@ -457,16 +587,36 @@
     clearTimeout(joinTimer);
     let tries = 0;
     (function ask() {
+      if (joinRejected) return;
       if (mySeat != null) { joinStatus = 'seated'; return; }   // welcome 已到
       if (tries >= 30) {
         if (joinStatus !== 'failed') { joinStatus = 'failed'; renderRoom(); }
-        window.MJNet.send('join', { name: myName });
+        window.MJNet.send('join', { name: myName, token: playerToken });
         joinTimer = setTimeout(ask, 3000);
         return;
       }
-      window.MJNet.send('join', { name: myName });
+      window.MJNet.send('join', { name: myName, token: playerToken });
       tries++;
       joinTimer = setTimeout(ask, 800);
+    })();
+  }
+
+  function startRejoinHandshake() {
+    clearTimeout(rejoinTimer);
+    const generation = ++rejoinGeneration;
+    let tries = 0;
+    guestOnlineReady = false;
+    disableBar();
+    (async function ask() {
+      if (generation !== rejoinGeneration || mode !== 'guest' || !window.MJNet.code) return;
+      if (document.hidden) {
+        rejoinTimer = setTimeout(ask, 2500);
+        return;
+      }
+      await window.MJNet.send('rejoin', { token: playerToken, name: myName });
+      if (generation !== rejoinGeneration) return;
+      tries++;
+      rejoinTimer = setTimeout(ask, tries < 12 ? 800 : 3000);
     })();
   }
 
@@ -474,7 +624,8 @@
     const code = cleanRoomCode();
     if (code.length !== 6) { alert('請輸入完整的 6 碼房號'); codeInput.focus(); return; }
     codeInput.blur();
-    MJSound.unlock(); mode = 'guest'; myName = myNick() || '玩家';
+    MJSound.unlock(); mode = 'guest'; mySeat = null; myName = myNick() || '玩家';
+    guestOnlineReady = false; joinRejected = false; joinFailureReason = '';
     const jb = $('#btnJoin'); jb.disabled = true; jb.textContent = '連線中…';
     try {
       await window.MJNet.join(code, guestOnMsg);
@@ -487,4 +638,107 @@
       alert('連線失敗:' + (e.message || e) + '\n請確認網路後再試,或先玩單機。');
     } finally { jb.disabled = false; jb.textContent = '加入'; }
   });
+
+  function restoreOnlineMeta(saved) {
+    Object.assign(cfg(), saved.cfg || {});
+    scores = Array.isArray(saved.scores) && saved.scores.length === 4 ? saved.scores.slice() : [0, 0, 0, 0];
+    dealerIndex = Number.isInteger(saved.dealerIndex) ? saved.dealerIndex : 0;
+    streak = Number.isFinite(saved.streak) ? saved.streak : 0;
+    roundWind = saved.roundWind || 'z1';
+    dealerPasses = Number.isFinite(saved.dealerPasses) ? saved.dealerPasses : 0;
+    sessionStats = Array.isArray(saved.sessionStats) && saved.sessionStats.length === 4
+      ? clone(saved.sessionStats)
+      : [0, 1, 2, 3].map(() => ({ hu: 0, tsumo: 0, dealIn: 0 }));
+  }
+
+  function showCachedGuestView(view) {
+    if (!view) return;
+    lastGuestView = clone(view);
+    const v = clone(view); v.mySeat = mySeat;
+    window.MJView.renderView(v, guestHandlers);
+    if (v.result) window.MJView.showResult(v, null, false);
+    guestOnlineReady = false;
+    disableBar();
+  }
+
+  async function restoreOnlineSession(saved) {
+    if (!saved || saved.kind !== 'online' || !['host', 'guest'].includes(saved.role) || !saved.room) return;
+    restoringSession = true;
+    mode = saved.role;
+    playerToken = saved.playerToken || playerToken;
+    mySeat = Number.isInteger(saved.mySeat) ? saved.mySeat : null;
+    myName = saved.myName || (mode === 'host' ? '房主' : '玩家');
+    started = !!saved.started;
+    restoreOnlineMeta(saved);
+
+    const connecting = window.MJNet.restore(saved.room, mode, mode === 'host' ? hostOnMsg : guestOnMsg);
+    $('#pillCode').textContent = '房號 ' + window.MJNet.code;
+    $('#pillCode').style.display = '';
+    window.__onlineEmote = onlineEmote;
+
+    if (mode === 'host') {
+      seats = Array.isArray(saved.seats) ? clone(saved.seats) : [];
+      const host = seats[0] || {};
+      seats[0] = Object.assign({}, host, {
+        seat: 0, cid: window.MJNet.clientId, token: playerToken,
+        name: host.name || myName || '房主', ai: false,
+      });
+      if (saved.game) G = Game.fromState(saved.game, { onEvent: hostEvent });
+      if (G || saved.inTable || started) {
+        startGameAudio(); enterTable();
+        if (G) window.MJView.renderView(buildView(0), hostHandlers);
+      } else renderRoom();
+    } else {
+      lastGuestView = clone(saved.lastView);
+      if (saved.inTable) {
+        startGameAudio(); enterTable(); showCachedGuestView(lastGuestView);
+      } else {
+        joinStatus = mySeat == null ? 'connecting' : 'seated';
+        renderRoom();
+      }
+    }
+
+    let connected = false;
+    try {
+      await connecting;
+      connected = true;
+    } catch (e) {
+      if ($('#app').classList.contains('on')) window.MJView.toast('網路恢復中，牌局已保留');
+      else {
+        joinStatus = 'failed';
+        joinFailureReason = '目前無法連上房間，系統會在網路恢復後繼續嘗試。';
+        renderRoom();
+      }
+    }
+
+    if (mode === 'host') {
+      restoringSession = false;
+      saveOnlineSession();
+      if (connected) window.MJNet.send('host-rejoin', { token: playerToken });
+      if (G) hostAdvance();
+      else if (started) hostStartHand();
+    } else if (mySeat == null) {
+      joinStatus = 'connecting'; startJoinHandshake();
+    } else startRejoinHandshake();
+  }
+
+  if (savedOnline && savedOnline.kind === 'online') {
+    restoreOnlineSession(savedOnline).catch(() => {
+      if (window.MJSession) { window.MJSession.clear(); window.MJSession.setScene('lobby'); }
+      window.MJNet.leave(); location.reload();
+    });
+  }
+  if (typeof document !== 'undefined' && document.addEventListener) {
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        saveOnlineSession();
+        clearTimeout(rejoinTimer);
+      } else if (mode === 'guest' && mySeat != null) startRejoinHandshake();
+    });
+  }
+  if (window.addEventListener) {
+    window.addEventListener('pagehide', saveOnlineSession);
+    window.addEventListener('pageshow', () => { if (mode === 'guest' && mySeat != null) startRejoinHandshake(); });
+    window.addEventListener('online', () => { if (mode === 'guest' && mySeat != null) startRejoinHandshake(); });
+  }
 })();

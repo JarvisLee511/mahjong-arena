@@ -567,7 +567,7 @@
     const row = el('div', 'row'); row.style.marginTop = '8px';
     if (canAgain) { const a = el('button', 'btn', v.roundOver ? '🀄 再來一場 ▶' : '下一局 ▶'); a.addEventListener('click', () => { $('#result').classList.remove('on'); onAgain && onAgain(); }); row.appendChild(a); }
     else { row.appendChild(Object.assign(el('div', 'hint', '等待房主開始下一局…'), { style: 'align-self:center' })); }
-    const lv = el('button', 'btn ghost', '離開'); lv.addEventListener('click', () => location.reload()); row.appendChild(lv);
+    const lv = el('button', 'btn ghost', '離開'); lv.addEventListener('click', leaveGame); row.appendChild(lv);
     foot.appendChild(row);
 
     card.append(body, foot);
@@ -674,8 +674,24 @@
   let sessionStats = [0, 1, 2, 3].map(() => ({ hu: 0, tsumo: 0, dealIn: 0 }));
   let dealerPasses = 0;   // 莊家換過幾家;換滿 4 家 = 打完一圈
   let autopilot = false;  // 託管:電腦代打我的回合
+  let leaving = false;
   const aiDelay = 1250;   // 手動時的慢節奏(留給碰/槓/報牌語音講完)
   const curDelay = () => (autopilot ? 150 : aiDelay);   // 託管時大幅加速,快速跑完整圈/將
+
+  function saveSoloSession() {
+    if (leaving || !G || !window.MJSession) return;
+    window.MJSession.save({
+      kind: 'solo', inTable: true, cfg: Object.assign({}, cfg), game: G.exportState(),
+      scores: scores.slice(), dealerIndex, streak, roundWind, dealerPasses,
+      sessionStats: JSON.parse(JSON.stringify(sessionStats)),
+    });
+  }
+
+  function enterSoloTable() {
+    $('#lobby').style.display = 'none'; $('#app').classList.add('on');
+    if (window.MJSession) window.MJSession.setScene('game');
+    prepareTableLayout();
+  }
 
   function solto() { return cfg.rule; }
 
@@ -754,7 +770,11 @@
     },
   };
 
-  function soloRender() { if (G) MJView.renderView(buildSoloView(), soloHandlers); }
+  function soloRender() {
+    if (!G) return;
+    MJView.renderView(buildSoloView(), soloHandlers);
+    saveSoloSession();
+  }
 
   function soloAdvance() {
     soloRender();
@@ -797,7 +817,10 @@
     const finishUp = () => {
       const cont = (dealerPasses >= roundTarget()) ? newRound : startHand;   // 打完賽制 → 重開
       MJView.showResult(buildSoloView(), cont, true);
+      saveSoloSession();
     };
+    if (G._finishHandled) { finishUp(); return; }
+    G._finishHandled = true;
     if (r.type === 'draw') { MJSound.fx('lose'); MJSound.voice('draw'); streak++; finishUp(); return; }  // 流局連莊
     const S = stakeVals(); let dealerKept = false;
     r.winners.forEach((w) => {
@@ -844,8 +867,7 @@
     scores = [0, 0, 0, 0]; dealerIndex = 0; streak = 0; roundWind = 'z1'; dealerPasses = 0;
     sessionStats = [0, 1, 2, 3].map(() => ({ hu: 0, tsumo: 0, dealIn: 0 }));
     MJSound.bgmStop(); if (window.__lobbyFX) window.__lobbyFX.stop();
-    $('#lobby').style.display = 'none'; $('#app').classList.add('on');
-    prepareTableLayout();
+    enterSoloTable();
     const mb = $('#btnMusic'); if (!mb || mb.dataset.on !== '0') MJSound.bgmStart('game');   // 遊戲中中國風輕音樂
     MJView.rollDealer(NAMES[dealerIndex], startHand);   // ⑧ 擲骰決莊開場
   }
@@ -869,7 +891,14 @@
     e.currentTarget.style.color = autopilot ? '#47d18a' : '';
     if (autopilot) { MJView.toast('託管中,電腦代打'); soloAutoStep(); }
   });
-  $('#btnLeave').addEventListener('click', () => location.reload());
+  function leaveGame() {
+    leaving = true;
+    if (window.MJSession) { window.MJSession.clear(); window.MJSession.setScene('lobby'); }
+    if (window.MJNet) window.MJNet.leave();
+    location.reload();
+  }
+  window.MJLeaveGame = leaveGame;
+  $('#btnLeave').addEventListener('click', leaveGame);
 
   // ⑩ 喊話 / 表情
   const EMOTES = ['碰!', '槓!', '胡啦!', '聽牌囉', '等你很久了', '快一點啦', '手氣真好齁', '再一盤!', '穩住', '唉呦', '😎', '😭', '🔥', '💰', '👏', '🀄'];
@@ -890,12 +919,18 @@
   document.addEventListener('pointerdown', () => {
     if (bgmKicked) return; bgmKicked = true;
     const b = $('#btnMusic');
-    if (b && b.dataset.on !== '0') { MJSound.unlock(); MJSound.bgmStart(); }
+    if (b && b.dataset.on !== '0') {
+      MJSound.unlock();
+      MJSound.bgmStart($('#app').classList.contains('on') ? 'game' : 'lobby');
+    }
   }, { once: true });
   const btnMusic = $('#btnMusic');
   if (btnMusic) btnMusic.addEventListener('click', (e) => {
     e.stopPropagation();
-    if (btnMusic.dataset.on === '0') { btnMusic.dataset.on = '1'; btnMusic.textContent = '♪'; MJSound.unlock(); MJSound.bgmStart(); }
+    if (btnMusic.dataset.on === '0') {
+      btnMusic.dataset.on = '1'; btnMusic.textContent = '♪'; MJSound.unlock();
+      MJSound.bgmStart($('#app').classList.contains('on') ? 'game' : 'lobby');
+    }
     else { btnMusic.dataset.on = '0'; btnMusic.textContent = '×'; MJSound.bgmStop(); }
   });
 
@@ -937,6 +972,32 @@
     return { stop() { running = false; cancelAnimationFrame(raf); ctx.clearRect(0, 0, W, H); } };
   }
   window.__lobbyFX = initLobbyFX();
+
+  function restoreSoloSession(saved) {
+    try {
+      cfg = Object.assign(cfg, saved.cfg || {});
+      scores = Array.isArray(saved.scores) ? saved.scores.slice(0, 4) : [0, 0, 0, 0];
+      dealerIndex = saved.dealerIndex || 0;
+      streak = saved.streak || 0;
+      roundWind = saved.roundWind || 'z1';
+      dealerPasses = saved.dealerPasses || 0;
+      sessionStats = Array.isArray(saved.sessionStats) ? saved.sessionStats : [0, 1, 2, 3].map(() => ({ hu: 0, tsumo: 0, dealIn: 0 }));
+      autopilot = false; busy = false; soloHint = null;
+      G = Game.fromState(saved.game, { onEvent: onGameEvent });
+      if (window.__lobbyFX) window.__lobbyFX.stop();
+      enterSoloTable();
+      soloAdvance();
+    } catch (e) {
+      if (window.MJSession) window.MJSession.clear();
+    }
+  }
+
+  const savedSession = window.MJSession && window.MJSession.load();
+  if (savedSession && savedSession.kind === 'solo' && savedSession.inTable && savedSession.game) {
+    restoreSoloSession(savedSession);
+  }
+  document.addEventListener('visibilitychange', () => { if (document.hidden) saveSoloSession(); });
+  window.addEventListener('pagehide', saveSoloSession);
 
   // online buttons handed to online.js (loaded after this file)
   window.MJSolo = { cfg, get names() { return NAMES; } };
