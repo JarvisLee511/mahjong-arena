@@ -55,9 +55,10 @@
       const ch = supa.channel('mahjong-' + room, { config: { broadcast: { self: false } } });
       ch.on('broadcast', { event: 'm' }, ({ payload }) => handle(payload));
       await new Promise((resolve, reject) => {
+        const to = setTimeout(() => reject(new Error('連線逾時(realtime 無回應)')), 12000);
         ch.subscribe((status, err) => {
-          if (status === 'SUBSCRIBED') resolve();
-          else if (['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED'].includes(status)) reject(err || new Error(status));
+          if (status === 'SUBSCRIBED') { clearTimeout(to); resolve(); }
+          else if (['CHANNEL_ERROR', 'TIMED_OUT', 'CLOSED'].includes(status)) { clearTimeout(to); reject(err || new Error(status)); }
         });
       });
       channel = ch;

@@ -265,13 +265,18 @@ body {
 /* ============================================================
    TABLE
    ============================================================ */
-#app { position: fixed; inset: 0; display: none; }
-#app.on { display: block; }
+#app { position: fixed; inset: 0; display: none; background: #000; overflow: hidden; }
+#app.on { display: flex; align-items: center; justify-content: center; }
+/* 固定 16:9 舞台(960×540):以 --mj-scale 等比縮放並置中,四周留黑邊,
+   所有內容一起縮放 → 任何螢幕比例都不會溢出或變形 */
 .table {
-  position: absolute; inset: 0;
+  position: relative; flex: none;
+  width: 960px; height: 540px;
+  scale: var(--mj-scale, 1);
+  transform-origin: center center;
   display: grid;
-  grid-template-columns: clamp(56px,8.5vw,92px) 1fr clamp(56px,8.5vw,92px);
-  grid-template-rows: clamp(58px,12vh,84px) 1fr auto;
+  grid-template-columns: 88px 1fr 88px;
+  grid-template-rows: 72px 1fr auto;
   grid-template-areas:
     "seatL top   seatR"
     "seatL center seatR"
@@ -317,7 +322,7 @@ body {
 .backs { display: flex; gap: 1px 2px; flex-wrap: wrap; justify-content: center; max-width: 100%; }
 /* 上家/下家(兩側)手牌沿邊直立排成一直行,騰出中間大海 */
 .seat-left .backs, .seat-right .backs {
-  flex-direction: column; flex-wrap: wrap; align-content: center; gap: 1px; max-height: 74vh;
+  flex-direction: column; flex-wrap: wrap; align-content: center; gap: 1px; max-height: 400px;
 }
 .seat-left .tb, .seat-right .tb { width: 20px; height: 14px; }
 /* 牌背:做出「兩層牌疊在一起」的立體感(頂面亮 + 疊層縫 + 側牆) */
@@ -646,9 +651,10 @@ body {
 @keyframes tileflash { 0%,100% { filter: none; } 50% { filter: drop-shadow(0 0 6px var(--neon-cyan)) drop-shadow(0 0 6px var(--neon-cyan)); } }
 /* #9 爽度:全場震動 */
 .table.shake { animation: tableShake .55s cubic-bezier(.36,.07,.19,.97); }
+/* 用獨立的 translate 屬性,才不會蓋掉 .table 的 scale(--mj-scale) */
 @keyframes tableShake {
-  10%,90% { transform: translate(-1px,0); } 20%,80% { transform: translate(3px,0); }
-  30%,50%,70% { transform: translate(-5px,0); } 40%,60% { transform: translate(5px,0); }
+  10%,90% { translate: -1px 0; } 20%,80% { translate: 3px 0; }
+  30%,50%,70% { translate: -5px 0; } 40%,60% { translate: 5px 0; }
 }
 
 #winanim {

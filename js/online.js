@@ -26,6 +26,7 @@
 
   // guest
   let mySeat = null, myName = '';
+  let joinStatus = null, joinTimer = null;   // 'connecting' | 'seated' | 'failed'
 
   const cfg = () => window.MJSolo.cfg;
 
@@ -80,7 +81,17 @@
       start.addEventListener('click', hostStartGame);
       card.appendChild(start);
     } else {
-      card.appendChild(el('div', 'hint', '已入座,等待房主開始…'));
+      if (mySeat != null) {
+        card.appendChild(el('div', 'hint', '✅ 已入座,等待房主開始…'));
+      } else if (joinStatus === 'failed') {
+        const w = el('div', 'hint', '❌ 找不到房主(房號 ' + window.MJNet.code + ')。請確認:①房號輸入正確 ②房主已按「建立房間」並停留在房間畫面 ③雙方網路正常。');
+        w.style.color = '#ff6b6b'; card.appendChild(w);
+        const retry = el('button', 'btn', '重新嘗試加入');
+        retry.addEventListener('click', () => { joinStatus = 'connecting'; renderRoom(); startJoinHandshake(); });
+        card.appendChild(retry);
+      } else {
+        card.appendChild(el('div', 'hint', '🔗 連線中… 正在尋找房主(房號 ' + window.MJNet.code + ')'));
+      }
     }
     const leave = el('button', 'btn ghost', '離開房間');
     leave.addEventListener('click', () => location.reload());
@@ -351,7 +362,7 @@
   function onEmote(payload) { window.MJView.showBubble(((payload.seat - selfSeat()) + 4) & 3, payload.text); }
 
   function guestOnMsg(type, payload) {
-    if (type === 'welcome') { mySeat = payload.seat; window._guestRoster = payload.roster; renderRoom(); }
+    if (type === 'welcome') { mySeat = payload.seat; joinStatus = 'seated'; clearTimeout(joinTimer); window._guestRoster = payload.roster; renderRoom(); }
     else if (type === 'roster') { window._guestRoster = payload.roster; renderRoom(); }
     else if (type === 'full') { alert('房間已滿或已開打 🙇'); location.reload(); }
     else if (type === 'begin') { MJSound.bgmStop(); if (window.__lobbyFX) window.__lobbyFX.stop(); const mb = $('#btnMusic'); if (!mb || mb.dataset.on !== '0') MJSound.bgmStart('game'); hideRoom(); $('#lobby').style.display = 'none'; $('#app').classList.add('on'); }
@@ -390,18 +401,33 @@
     } catch (e) { alert('開房失敗:' + (e.message || e) + '\n可先用單機,或連線稍後再試。'); }
   });
 
+  // 持續向房主敲門,直到入座或逾時(涵蓋房主稍晚上線/行動網路較慢的時序)
+  function startJoinHandshake() {
+    clearTimeout(joinTimer);
+    let tries = 0;
+    (function ask() {
+      if (mySeat != null) { joinStatus = 'seated'; return; }   // welcome 已到
+      if (tries >= 30) { joinStatus = 'failed'; renderRoom(); return; }   // ~30 × 800ms ≈ 24 秒
+      window.MJNet.send('join', { name: myName });
+      tries++;
+      joinTimer = setTimeout(ask, 800);
+    })();
+  }
+
   $('#btnJoin').addEventListener('click', async () => {
     const code = ($('#codeInput').value || '').toUpperCase().trim();
     if (code.length < 4) { alert('請輸入房號'); return; }
     MJSound.unlock(); mode = 'guest'; myName = myNick() || '玩家';
+    const jb = $('#btnJoin'); jb.disabled = true;
     try {
       await window.MJNet.join(code, guestOnMsg);
       window.__onlineEmote = onlineEmote;
       $('#pillCode').textContent = '房號 ' + code; $('#pillCode').style.display = '';
+      joinStatus = 'connecting';
       renderRoom();
-      // announce, retry a few times in case host is still subscribing
-      let tries = 0;
-      (function ask() { if (mySeat != null || tries >= 8) return; window.MJNet.send('join', { name: myName }); tries++; setTimeout(ask, 800); })();
-    } catch (e) { alert('加入失敗:' + (e.message || e)); }
+      startJoinHandshake();
+    } catch (e) {
+      alert('連線失敗:' + (e.message || e) + '\n請確認網路後再試,或先玩單機。');
+    } finally { jb.disabled = false; }
   });
 })();
