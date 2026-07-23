@@ -1,0 +1,12 @@
+{
+  "name": "該死的賭徒們 · Damn Gamblers",
+  "short_name": "該死的賭徒們",
+  "start_url": "./index.html",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#0B0E14",
+  "theme_color": "#0B0E14",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

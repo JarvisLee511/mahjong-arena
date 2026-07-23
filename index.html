@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0B0E14">
+<meta http-equiv="Cache-Control" content="no-store">
+<title>該死的賭徒們 · Damn Gamblers</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&family=Ma+Shan+Zheng&family=Zhi+Mang+Xing&family=Bebas+Neue&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css?v=22">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="manifest" href="manifest.json">
+</head>
+<body>
+
+<!-- portrait rotate hint -->
+<div id="rotate">
+  <div class="phone">📱</div>
+  <div class="neon" style="font-size:24px">請將手機橫放</div>
+  <div class="hint">麻將四方位,橫著打才過癮</div>
+</div>
+
+<!-- ============ LOBBY ============ -->
+<div id="lobby">
+  <button class="icon-btn" id="btnMusic" data-on="1" title="音樂" style="position:absolute;top:14px;right:14px;z-index:3">🎵</button>
+  <div class="noir-spot"></div>
+  <div class="noir-suits" aria-hidden="true">♠ ♥ ♦ ♣</div>
+  <canvas class="coin-canvas" id="coinCanvas" aria-hidden="true"></canvas>
+  <div class="fog" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+  <div class="title-block">
+    <div class="kicker">台灣十六張 · 一翻兩瞪眼</div>
+    <div class="title-row">
+      <h1 class="title">該死的賭徒們</h1>
+      <div class="chop">梭哈</div>
+    </div>
+    <div class="tagline">DAMN&nbsp;GAMBLERS</div>
+  </div>
+
+  <div class="lobby-card">
+    <div class="lob-col">
+      <div class="seg" id="ruleSeg">
+        <button data-rule="std" class="on">十六張</button>
+        <button data-rule="swap">換三張(美麻)</button>
+      </div>
+      <div class="seg" id="lvlSeg">
+        <button data-lvl="easy">電腦·菜鳥</button>
+        <button data-lvl="normal" class="on">電腦·老手</button>
+        <button data-lvl="hard">電腦·賭神</button>
+      </div>
+      <div class="seg" id="lenSeg">
+        <button data-len="round" class="on">一圈(4莊)</button>
+        <button data-len="game">一將(東南西北)</button>
+      </div>
+      <div class="seg" id="stakeSeg">
+        <button data-stake="30/10" class="on">底30/台10</button>
+        <button data-stake="50/20">底50/台20</button>
+        <button data-stake="100/50">底100/台50</button>
+      </div>
+      <div class="hint" id="lobbyHint">單機:你 + 3 位電腦,馬上開打。<br>連線房:房主選好設定開房,朋友輸房號入座。</div>
+    </div>
+    <div class="lob-col">
+      <div class="seg" id="multiSeg">
+        <button data-multi="multi" class="on">一炮多響</button>
+        <button data-multi="single">一炮一響</button>
+      </div>
+      <button class="btn" id="btnSolo">單機開打(電腦補位)</button>
+      <div class="field" id="nameField">
+        <input id="nameInput" maxlength="8" placeholder="你的暱稱(連線用)" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="row">
+        <button class="btn red" id="btnCreate">建立房間</button>
+        <button class="btn ghost" id="btnJoinToggle">輸入房號加入</button>
+      </div>
+      <div class="field" id="joinField" style="display:none">
+        <input id="codeInput" maxlength="6" placeholder="房號" autocomplete="off" spellcheck="false">
+        <button class="btn" id="btnJoin" style="padding:10px 18px">加入</button>
+      </div>
+    </div>
+  </div>
+  <div class="credits">音樂:Hitman — Kevin MacLeod (incompetech.com) · 中國風 — PeriTune,皆 CC BY 4.0</div>
+</div>
+
+<!-- ============ TABLE ============ -->
+<div id="app">
+  <div class="table">
+    <div class="hud">
+      <button class="icon-btn" id="btnLeave" title="離開">✕</button>
+      <span class="pill" id="selfInfo"></span>
+      <span class="pill" id="pillCode" style="display:none"></span>
+      <button class="icon-btn" id="btnSound" title="音效">🔊</button>
+      <button class="icon-btn" id="btnAuto" title="託管(自動摸打)">⏩</button>
+      <button class="icon-btn" id="btnEmote" title="喊話">💬</button>
+    </div>
+    <div id="emotePanel"></div>
+
+    <div class="opp seat-top"    id="seatTop"></div>
+    <div class="opp seat-left"   id="seatLeft"></div>
+    <div class="opp seat-right"  id="seatRight"></div>
+
+    <div class="center">
+      <div class="mwall top" id="wallT"></div>
+      <div class="mwall bottom" id="wallB"></div>
+      <div class="mwall left" id="wallL"></div>
+      <div class="mwall right" id="wallR"></div>
+      <div class="pond" id="pond"></div>
+      <div class="wallpile" id="wallpile">
+        <div class="rw" id="roundWind">東風圈</div>
+        <div class="wall" id="wallCount">64<small> 張</small></div>
+        <div class="dice" id="dice"></div>
+      </div>
+    </div>
+
+    <div class="self">
+      <div class="tenpai-bar" id="tenpaiBar"></div>
+      <div class="self-melds" id="myMelds"></div>
+      <div class="hand" id="myHand"></div>
+      <div class="actions" id="actions"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 擲骰決莊 -->
+<div id="diceRoll">
+  <div class="dice-box">
+    <div class="dice-3d"><span id="dieA">⚄</span><span id="dieB">⚁</span></div>
+    <div class="dice-say" id="diceSay">擲骰定莊…</div>
+  </div>
+</div>
+
+<!-- 台味胡牌動畫 -->
+<div id="winanim"></div>
+
+<!-- toast + result overlays injected here -->
+<div id="result">
+  <div class="result-card" id="resultCard"></div>
+</div>
+
+<script src="js/tiles-art.js?v=22"></script>
+<script src="js/engine.js?v=22"></script>
+<script src="js/game.js?v=22"></script>
+<script src="js/ai.js?v=22"></script>
+<script src="js/sound.js?v=22"></script>
+<script src="js/ui.js?v=22"></script>
+<script src="js/net.js?v=22"></script>
+<script src="js/online.js?v=22"></script>
+</body>
+</html>

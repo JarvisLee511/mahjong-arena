@@ -1,0 +1,7 @@
+{
+  "name": "mahjong-arena",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "description": "台味夜市霓虹 · 線上台灣16張麻將(房號連線 + AI補位 + 換三張)"
+}

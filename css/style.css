@@ -1,0 +1,703 @@
+/* ============================================================
+   Mahjong Arena — 台味夜市霓虹 · 手機橫式
+   ============================================================ */
+:root {
+  --ink: #0B0E14;
+  --ink-2: #12161F;
+  --felt: #0F3D2E;
+  --felt-lite: #17624a;
+  --neon-red: #FF2D55;
+  --neon-gold: #FFD24C;
+  --neon-cyan: #00E5D0;
+  --ivory: #FAF6EC;
+  --ivory-sh: #d9d2bf;
+  --char-red: #C62828;   /* 萬 / 中 */
+  --char-blue: #1565C0;  /* 筒 */
+  --char-green: #1B7A3E; /* 條 / 發 */
+  --ink-tile: #1a1a1a;
+  --r-tile: 4px;
+  --r-panel: 16px;
+  --glow-red: 0 0 12px rgba(255,45,85,.55), 0 0 26px rgba(255,45,85,.28);
+  --glow-gold: 0 0 12px rgba(255,210,76,.6), 0 0 28px rgba(255,210,76,.3);
+  --glow-cyan: 0 0 10px rgba(0,229,208,.55);
+  --font: "Noto Sans TC", "微軟正黑體", "Microsoft JhengHei", system-ui, sans-serif;
+  /* cinematic gambler palette (該死的賭徒們 首頁) */
+  --gold: #d4af37;
+  --gold-lite: #f2dd8c;
+  --gold-dk: #8a6a17;
+  --blood: #b0000f;
+  --blood-lite: #e0122a;
+  --noir: #0a0a0b;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; overflow: hidden; }
+body {
+  font-family: var(--font);
+  background:
+    radial-gradient(120% 90% at 50% 40%, #14382b 0%, #0c261d 45%, var(--ink) 100%);
+  color: #eee;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* neon signage title font treatment */
+.neon {
+  color: #fff;
+  text-shadow: var(--glow-red), 0 0 4px #fff;
+  letter-spacing: .04em;
+}
+.neon-gold { color: var(--neon-gold); text-shadow: var(--glow-gold); }
+
+/* ---------- rotate hint (portrait) ---------- */
+#rotate {
+  position: fixed; inset: 0; z-index: 999;
+  display: none; align-items: center; justify-content: center;
+  flex-direction: column; gap: 18px; background: var(--ink); text-align: center;
+}
+#rotate .phone { font-size: 64px; animation: rot 2s ease-in-out infinite; }
+@keyframes rot { 0%,100%{transform:rotate(0)} 50%{transform:rotate(-90deg)} }
+@media (orientation: portrait) { #rotate { display: flex; } #app { display: none; } }
+
+/* ============================================================
+   START / LOBBY overlay
+   ============================================================ */
+#lobby {
+  position: fixed; inset: 0; z-index: 100;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: clamp(10px, 2.4vh, 22px); padding: 16px; overflow: auto;
+  background:
+    radial-gradient(80% 60% at 50% 30%, rgba(255,45,85,.10), transparent 60%),
+    radial-gradient(70% 60% at 50% 90%, rgba(255,210,76,.08), transparent 60%),
+    var(--ink);
+}
+#lobby h1 { font-size: clamp(30px, 7vmin, 54px); font-weight: 900; line-height: 1.05; }
+#lobby .sub { color: #9fb3ab; font-size: 15px; margin-top: -10px; letter-spacing: .3em; }
+.lobby-card {
+  width: min(520px, 92vw); background: rgba(18,22,31,.85);
+  border: 1px solid rgba(255,210,76,.25); border-radius: var(--r-panel);
+  padding: 22px; display: flex; flex-direction: column; gap: 14px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.5), inset 0 0 40px rgba(0,229,208,.04);
+  backdrop-filter: blur(6px);
+}
+.btn {
+  border: none; cursor: pointer; font-family: var(--font); font-weight: 800;
+  border-radius: 999px; padding: 14px 20px; font-size: 16px; color: #1a1008;
+  background: linear-gradient(180deg, #ffe27a, var(--neon-gold));
+  box-shadow: var(--glow-gold); transition: transform .12s, box-shadow .12s, filter .12s;
+}
+.btn:active { transform: translateY(2px) scale(.98); }
+.btn.ghost {
+  background: transparent; color: #fff; border: 1.5px solid rgba(0,229,208,.5);
+  box-shadow: var(--glow-cyan);
+}
+.btn.red {
+  background: linear-gradient(180deg, #ff5c7c, var(--neon-red)); color: #fff;
+  box-shadow: var(--glow-red);
+}
+.btn:disabled { filter: grayscale(.7) opacity(.5); cursor: not-allowed; box-shadow: none; }
+.row { display: flex; gap: 10px; }
+.row .btn { flex: 1; }
+.field {
+  display: flex; gap: 8px; align-items: center;
+  background: #0c0f16; border: 1px solid #2a3140; border-radius: 12px; padding: 4px 4px 4px 14px;
+}
+.field input {
+  flex: 1; background: transparent; border: none; outline: none; color: #fff;
+  font-size: 20px; font-weight: 800; letter-spacing: .3em; font-family: var(--font);
+}
+.seg { display: flex; gap: 6px; }
+.seg button {
+  flex: 1; padding: 9px; border-radius: 10px; border: 1px solid #2a3140;
+  background: #0c0f16; color: #9fb3ab; font-weight: 700; cursor: pointer; font-family: var(--font);
+}
+.seg button.on { background: var(--neon-red); color: #fff; border-color: transparent; box-shadow: var(--glow-red); }
+.hint { color: #7f8c96; font-size: 12.5px; text-align: center; line-height: 1.6; }
+
+/* ============================================================
+   Cinematic lobby — 該死的賭徒們 (賭神電影感)
+   black + blood red + gold foil · spotlight · vignette · no neon
+   ============================================================ */
+#lobby {
+  background: #08080a;
+  gap: clamp(8px, 2vh, 22px);
+  padding: 10px;
+}
+#lobby .lobby-card { padding: 14px 16px; }
+#lobby .lob-col { display: flex; flex-direction: column; gap: 9px; min-width: 0; }
+#lobby .lob-col .hint { text-align: left; margin-top: 2px; }
+#lobby .title { font-size: clamp(40px, 9.5vmin, 78px); }
+#lobby .kicker { margin-bottom: 6px; }
+#lobby .tagline { margin-top: 8px; }
+#lobby .noir-spot {
+  position: absolute; top: -8%; left: 50%; transform: translateX(-50%);
+  width: 130%; height: 78%; pointer-events: none; z-index: 0;
+  background:
+    radial-gradient(58% 68% at 50% 0%, rgba(212,175,55,.16), transparent 62%),
+    radial-gradient(40% 50% at 50% 6%, rgba(224,18,42,.10), transparent 70%);
+}
+#lobby .noir-suits {
+  position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  display: flex; align-items: center; justify-content: center; gap: min(9vw, 90px);
+  font-size: min(34vw, 240px); line-height: 1; letter-spacing: .1em;
+  color: rgba(212,175,55,.045); user-select: none;
+}
+#lobby::after {   /* film vignette */
+  content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background: radial-gradient(120% 95% at 50% 42%, transparent 52%, rgba(0,0,0,.72) 100%);
+  box-shadow: inset 0 0 160px 30px rgba(0,0,0,.85);
+}
+#lobby .title-block { position: relative; z-index: 3; text-align: center; }
+#lobby .kicker {
+  color: var(--gold); letter-spacing: .55em; font-size: clamp(10px, 1.6vw, 13px);
+  font-weight: 800; opacity: .8; margin-bottom: 10px; padding-left: .55em;
+}
+#lobby .title-row { display: inline-flex; align-items: flex-start; gap: 6px; position: relative; }
+#lobby .title {
+  font-family: "Ma Shan Zheng", "DFKai-SB", "BiauKai", "KaiTi", cursive;
+  font-weight: 400; line-height: .9;
+  font-size: clamp(52px, 13vmin, 108px); letter-spacing: .04em;
+  background: linear-gradient(180deg, #fdf1c0 0%, #e9c95e 40%, #b8901f 58%, #f3da86 100%);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent;
+  filter: drop-shadow(0 2px 0 rgba(0,0,0,.75)) drop-shadow(0 10px 16px rgba(0,0,0,.7));
+  transform: rotate(-2deg);
+}
+/* 紅印章「梭哈」— 豪邁賭徒味 */
+#lobby .chop {
+  align-self: center; margin-left: 4px;
+  writing-mode: vertical-rl; text-orientation: upright;
+  font-family: "Ma Shan Zheng", "DFKai-SB", "KaiTi", cursive;
+  font-size: clamp(15px, 3.2vmin, 26px); line-height: 1; letter-spacing: .04em;
+  color: #fff; background: var(--blood);
+  padding: 8px 5px; border-radius: 5px; transform: rotate(6deg);
+  box-shadow: 0 4px 10px rgba(0,0,0,.55), inset 0 0 0 2px rgba(255,255,255,.18);
+  text-shadow: 0 1px 1px rgba(0,0,0,.4);
+}
+#lobby .tagline {
+  font-family: "Bebas Neue", var(--font); letter-spacing: .34em;
+  font-size: clamp(15px, 3.4vmin, 26px); color: var(--blood-lite);
+  margin-top: 12px; padding-left: .34em; display: inline-flex; align-items: center; gap: 14px;
+  text-shadow: 0 1px 0 rgba(0,0,0,.6);
+}
+#lobby .tagline::before, #lobby .tagline::after {
+  content: ""; width: clamp(24px, 8vw, 70px); height: 2px;
+  background: linear-gradient(90deg, transparent, var(--gold)); opacity: .8;
+}
+#lobby .tagline::after { background: linear-gradient(90deg, var(--gold), transparent); }
+
+#lobby .lobby-card {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start;
+  width: min(680px, 94vw);
+  position: relative; z-index: 3; overflow: hidden;
+  background: linear-gradient(180deg, rgba(24,20,16,.94), rgba(9,8,7,.96));
+  border: 1px solid rgba(212,175,55,.4); border-radius: 10px;
+  box-shadow: 0 30px 80px rgba(0,0,0,.75), inset 0 0 0 1px rgba(0,0,0,.5),
+    inset 0 1px 0 rgba(212,175,55,.22);
+  backdrop-filter: blur(3px);
+}
+/* premium light sweep across the card */
+#lobby .lobby-card::before {
+  content: ""; position: absolute; top: 0; left: -60%; width: 45%; height: 100%;
+  background: linear-gradient(105deg, transparent, rgba(255,238,190,.10), transparent);
+  transform: skewX(-18deg); pointer-events: none; z-index: 5;
+  animation: cardsweep 7.5s ease-in-out infinite;
+}
+@keyframes cardsweep { 0% { left: -60%; } 55% { left: 135%; } 100% { left: 135%; } }
+
+/* falling gold coins (canvas) + rising fog */
+#lobby .coin-canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+#lobby .fog {
+  position: absolute; left: 0; right: 0; bottom: -30px; height: 48%;
+  z-index: 2; pointer-events: none; overflow: hidden;
+}
+#lobby .fog span {
+  position: absolute; bottom: -40%; width: 62vw; height: 62vw; border-radius: 50%;
+  background: radial-gradient(circle, rgba(228,232,255,.16), rgba(212,175,55,.05) 42%, transparent 70%);
+  filter: blur(30px); mix-blend-mode: screen; opacity: 0;
+  animation: fogrise 15s ease-in-out infinite;
+}
+#lobby .fog span:nth-child(1) { left: -12%; }
+#lobby .fog span:nth-child(2) { left: 28%; width: 78vw; height: 78vw; animation-duration: 19s; animation-delay: -6s; }
+#lobby .fog span:nth-child(3) { left: 58%; width: 54vw; height: 54vw; animation-duration: 16s; animation-delay: -11s; }
+#lobby .fog span:nth-child(4) { left: 82%; width: 46vw; height: 46vw; animation-duration: 21s; animation-delay: -3s; }
+@keyframes fogrise {
+  0% { transform: translate(0, 25%) scale(1); opacity: 0; }
+  25% { opacity: .85; }
+  70% { opacity: .55; }
+  100% { transform: translate(5%, -35%) scale(1.35); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #lobby .lobby-card::before, #lobby .fog span { animation: none; }
+}
+/* gold foil / blood buttons — solid, embossed, NOT glowing pills */
+#lobby .btn {
+  border-radius: 6px; letter-spacing: .06em; font-weight: 900; color: #201400;
+  background: linear-gradient(180deg, #f4e08f, var(--gold) 55%, #c69f2c);
+  box-shadow: 0 3px 0 var(--gold-dk), 0 7px 16px rgba(0,0,0,.55);
+  border: 1px solid rgba(255,255,255,.25);
+}
+#lobby .btn:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--gold-dk), 0 3px 8px rgba(0,0,0,.5); }
+#lobby .btn.red {
+  color: #fff; background: linear-gradient(180deg, #e83049, var(--blood) 60%, #7e000b);
+  box-shadow: 0 3px 0 #5c0008, 0 7px 16px rgba(0,0,0,.55); border-color: rgba(255,255,255,.15);
+}
+#lobby .btn.ghost {
+  color: var(--gold); background: rgba(0,0,0,.3); border: 1.5px solid var(--gold);
+  box-shadow: none; text-shadow: 0 1px 0 rgba(0,0,0,.6);
+}
+#lobby .seg button {
+  background: #14110b; border: 1px solid rgba(212,175,55,.28); color: #b7a679; border-radius: 6px;
+}
+#lobby .seg button.on {
+  background: linear-gradient(180deg, #e83049, var(--blood)); color: #fff; border-color: transparent;
+  box-shadow: inset 0 0 0 1px rgba(212,175,55,.5), 0 2px 8px rgba(176,0,15,.4);
+}
+#lobby .field { background: #0c0b08; border: 1px solid rgba(212,175,55,.35); border-radius: 6px; }
+#lobby .field input { color: var(--gold-lite); }
+#lobby .hint { color: #877c64; }
+#lobby .credits {
+  position: absolute; bottom: 5px; left: 0; right: 0; z-index: 3;
+  text-align: center; font-size: 10px; color: rgba(212,175,55,.4);
+  pointer-events: none; padding: 0 10px;
+}
+#lobby .icon-btn { border-color: rgba(212,175,55,.4); color: var(--gold); background: rgba(0,0,0,.45); }
+
+/* ============================================================
+   TABLE
+   ============================================================ */
+#app { position: fixed; inset: 0; display: none; }
+#app.on { display: block; }
+.table {
+  position: absolute; inset: 0;
+  display: grid;
+  grid-template-columns: clamp(56px,8.5vw,92px) 1fr clamp(56px,8.5vw,92px);
+  grid-template-rows: clamp(58px,12vh,84px) 1fr auto;
+  grid-template-areas:
+    "seatL top   seatR"
+    "seatL center seatR"
+    "self  self  self";
+  padding: 6px;
+  gap: 4px;
+}
+.seat-top { grid-area: top; }
+.seat-left { grid-area: seatL; }
+.seat-right { grid-area: seatR; }
+.center { grid-area: center; }
+.self { grid-area: self; }
+
+/* opponent panels */
+.opp {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  position: relative;
+}
+.avatar {
+  --c: var(--neon-cyan);
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 5px 8px; border-radius: 12px; background: rgba(12,15,22,.7);
+  border: 1px solid rgba(255,255,255,.08); min-width: 62px;
+}
+.avatar .nm { font-size: 12px; font-weight: 800; white-space: nowrap; }
+.avatar .sc { font-size: 12px; color: #cfd8d2; font-weight: 800; }
+.avatar .sc.pos { color: #47d18a; }
+.avatar .sc.neg { color: #ff6b6b; }
+.avatar .streak {
+  position: absolute; bottom: -7px; right: -6px; font-size: 10px; font-weight: 900; color: #fff;
+  background: var(--blood); border: 1px solid var(--gold); border-radius: 999px; padding: 1px 5px;
+}
+#selfInfo { color: var(--neon-gold); font-weight: 800; }
+.avatar .wind {
+  position: absolute; top: -8px; left: -8px; width: 22px; height: 22px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 12px; font-weight: 900;
+  background: var(--ink); border: 1.5px solid var(--neon-gold); color: var(--neon-gold);
+}
+.avatar.turn { border-color: var(--neon-gold); box-shadow: var(--glow-gold); }
+.avatar.dealer .nm::after { content: " 莊"; color: var(--neon-red); }
+
+/* concealed tile backs count for opponents */
+.backs { display: flex; gap: 1px 2px; flex-wrap: wrap; justify-content: center; max-width: 100%; }
+/* 上家/下家(兩側)手牌沿邊直立排成一直行,騰出中間大海 */
+.seat-left .backs, .seat-right .backs {
+  flex-direction: column; flex-wrap: wrap; align-content: center; gap: 1px; max-height: 74vh;
+}
+.seat-left .tb, .seat-right .tb { width: 20px; height: 14px; }
+/* 牌背:做出「兩層牌疊在一起」的立體感(頂面亮 + 疊層縫 + 側牆) */
+.tb {
+  width: 15px; height: 21px; border-radius: 2px 2px 3px 3px; position: relative;
+  background: linear-gradient(180deg, #3aa06e 0 16%, #1c7a4d 16% 55%, #14663f 55% 100%);
+  border: 1px solid #0a3d24;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.25), 0 1px 1px rgba(0,0,0,.35);
+}
+.tb::after {   /* seam between the two stacked layers */
+  content: ""; position: absolute; left: 1px; right: 1px; top: 55%; height: 1px;
+  background: rgba(0,0,0,.28); box-shadow: 0 1px 0 rgba(255,255,255,.12);
+}
+/* opponent exposed melds (small) */
+/* 對手副露:縮小、同方向一直線排在手牌前方;上家/下家(兩側)整組轉 90° */
+.opp-melds { display: flex; gap: 4px; flex-wrap: nowrap; justify-content: center; }
+.opp-melds .meld-group { padding: 1px; gap: 0; background: rgba(0,0,0,.2); }
+.opp-melds .tile.meld-tile { width: 18px; height: 25px; }
+.seat-left .opp-melds, .seat-right .opp-melds { flex-direction: column; align-items: center; gap: 0; }
+.seat-left .opp-melds .meld-group, .seat-right .opp-melds .meld-group { transform: rotate(90deg); margin: 15px 0; }
+
+/* ---------- center pond ---------- */
+.center {
+  position: relative; border-radius: 22px;
+  background:
+    radial-gradient(60% 60% at 50% 45%, var(--felt-lite), var(--felt) 70%, #0a2a1f);
+  box-shadow: inset 0 0 60px rgba(0,0,0,.5), 0 0 0 2px rgba(0,229,208,.12),
+    0 0 24px rgba(0,229,208,.08);
+  overflow: hidden;
+}
+.center::after { /* felt sheen */
+  content: ""; position: absolute; inset: 0;
+  background: radial-gradient(40% 30% at 50% 30%, rgba(255,255,255,.06), transparent 70%);
+  pointer-events: none;
+}
+/* central 牌山:立體牌牆 + 圈風 + 張數,會隨摸牌變短 */
+.wallpile {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 3px; z-index: 3;
+  pointer-events: none;
+}
+.wallpile .rw {
+  font-size: 12px; color: var(--neon-gold); font-weight: 800; letter-spacing: .2em;
+  background: rgba(0,0,0,.4); padding: 2px 10px; border-radius: 999px;
+}
+.wallpile .stack { display: flex; gap: 1px; align-items: flex-end; height: 17px; }
+/* 牌山一墩 = 兩張疊高的牌背:頂面亮 + 疊層縫 + 底部陰影(立體) */
+.wseg {
+  position: relative; width: 10px; height: 19px; border-radius: 1px 1px 2px 2px;
+  background: linear-gradient(180deg, #4bb37e 0 20%, #1f8351 20% 100%);
+  border: 1px solid #0a3d24; box-shadow: inset 0 -3px 3px rgba(0,0,0,.32);
+}
+.wseg::after {   /* 兩層之間的疊縫 */
+  content: ""; position: absolute; left: 0; right: 0; top: 58%; height: 1px;
+  background: rgba(0,0,0,.4); box-shadow: 0 1px 0 rgba(255,255,255,.14);
+}
+.wallpile .wall { font-size: 26px; font-weight: 900; color: #fff; text-shadow: var(--glow-cyan); line-height: 1; }
+.wallpile .wall small { font-size: 11px; color: #9fb3ab; font-weight: 600; }
+.wallpile .dice { font-size: 16px; letter-spacing: 3px; opacity: .8; }
+
+/* 四面立體牌山,矩形圍住大海 */
+.mwall { position: absolute; display: flex; gap: 1px; z-index: 1; }
+.mwall.top    { top: 6px;    left: 50%; transform: translateX(-50%); flex-direction: row; }
+.mwall.bottom { bottom: 6px; left: 50%; transform: translateX(-50%); flex-direction: row; }
+.mwall.left   { left: 8px;   top: 50%; transform: translateY(-50%); flex-direction: column; }
+.mwall.right  { right: 8px;  top: 50%; transform: translateY(-50%); flex-direction: column; }
+.mwall.left .wseg, .mwall.right .wseg {
+  width: 19px; height: 10px; border-radius: 1px;
+  background: linear-gradient(90deg, #4bb37e 0 20%, #1f8351 20% 100%);
+}
+.mwall.left .wseg::after, .mwall.right .wseg::after {
+  top: 0; bottom: 0; left: 58%; right: auto; width: 1px; height: auto;
+}
+.mwall.right .wseg { background: linear-gradient(270deg, #4bb37e 0 20%, #1f8351 20% 100%); }
+.mwall.right .wseg::after { left: auto; right: 58%; }
+
+/* four discard rivers, positioned toward each seat */
+.pond { position: absolute; inset: 0; z-index: 1; }
+/* neat discard rows, built row-by-row in JS (like 神來也 的棄牌區) */
+.river { position: absolute; display: flex; flex-direction: column; gap: 1px; }
+.river-row { display: flex; gap: 1px; }
+.river .tile { width: 22px; height: 31px; }
+/* 四家棄牌環繞中央牌山,集中成一個正方形牌池 */
+.river.self  { top: calc(50% + 42px);  left: 50%; transform: translateX(-50%); align-items: center; }
+.river.top   { bottom: calc(50% + 42px); left: 50%; transform: translateX(-50%); align-items: center; flex-direction: column-reverse; }
+.river.left  { top: 50%; right: calc(50% + 78px); transform: translateY(-50%); align-items: flex-end; }
+.river.right { top: 50%; left: calc(50% + 78px);  transform: translateY(-50%); align-items: flex-start; }
+.river .tile.last {
+  filter: drop-shadow(0 0 5px var(--neon-cyan)) drop-shadow(0 0 5px var(--neon-cyan));
+  animation: discardIn .28s cubic-bezier(.2,.9,.3,1.2);
+}
+@keyframes discardIn { from { opacity: 0; transform: translateY(-14px) scale(1.25); } to { opacity: 1; transform: none; } }
+.hand .tile.drawn { animation: drawPop .3s cubic-bezier(.2,.9,.3,1.3); }
+@keyframes drawPop { 0% { opacity: 0; transform: translateY(-16px) scale(1.2); } 100% { opacity: 1; transform: none; } }
+
+/* ---------- your area ---------- */
+.self {
+  display: flex; flex-direction: column; gap: 4px; padding: 2px 4px 4px;
+}
+.self-melds { display: flex; gap: 8px; min-height: 0; align-items: center; justify-content: center; flex-wrap: wrap; }
+.hand {
+  display: flex; gap: 0; align-items: flex-end; justify-content: center;
+  min-height: 62px; flex-wrap: nowrap;
+}
+.hand .tile { cursor: pointer; transition: transform .1s; margin: 0 -1px; }
+.hand .tile.sel { transform: translateY(-12px); filter: drop-shadow(0 3px 3px rgba(0,0,0,.4)) drop-shadow(0 0 7px var(--neon-gold)); }
+/* 摸的那張不再空一格,與其他牌一樣緊貼(仍保留彈入動畫) */
+.hand .tile.hintable { filter: drop-shadow(0 2px 2.5px rgba(0,0,0,.4)) drop-shadow(0 0 6px var(--neon-cyan)); }
+
+/* ---------- tiles ---------- */
+/* 牌盒長寬比 = 牌面本來的比例 0.714(較高,像真麻將),避免拉伸變形 */
+.tile {
+  position: relative; width: 40px; height: 56px; flex: 0 0 auto;
+}
+.tile .tface-bg, .tile .tface-sym {
+  position: absolute; inset: 0; width: 100%; height: 100%; display: block;
+  pointer-events: none; -webkit-user-drag: none;
+}
+/* 牌面 = CSS 畫的平面象牙牌底(完美對稱)+ 透明底的符號 SVG 疊上 */
+.tile .tface-sym {
+  box-sizing: border-box;
+  padding: 7% 8%;
+  object-fit: contain;
+  background: #f7f3e6;                       /* 象牙牌面 */
+  border-radius: 13%;
+  box-shadow: inset 0 0 0 1.4px rgba(64,96,64,.38),   /* 薄邊 */
+              inset 0 -2px 3px rgba(120,110,80,.12);  /* 底緣一點點層次(仍平面) */
+}
+.tile.meld-tile .tface-sym, .river .tile .tface-sym,
+.opp-melds .tile .tface-sym, .rv-tiles .tile .tface-sym { box-shadow: inset 0 0 0 1px rgba(64,96,64,.4); }
+/* legacy hooks (unused now, kept harmless) */
+.tile .tface { width: 100%; height: 100%; display: block; }
+.tile .num { font-size: 20px; }
+.tile .suit { font-size: 11px; margin-top: 1px; }
+.tile.m { color: var(--char-red); }
+.tile.p { color: var(--char-blue); }
+.tile.s { color: var(--char-green); }
+.tile.z .big { font-size: 22px; }
+.tile.z.dragon-red { color: var(--char-red); }
+.tile.z.dragon-green { color: var(--char-green); }
+.tile.z.wind { color: var(--ink-tile); }
+.tile.z.white .box { width: 18px; height: 26px; border: 2px solid var(--char-blue); border-radius: 4px; }
+.tile.f { color: var(--neon-red); }
+.tile.f.gent { color: var(--char-green); }
+.tile.meld-tile { width: 33px; height: 46px; }
+.meld-group { display: flex; gap: 1px; padding: 2px; border-radius: 8px; background: rgba(0,0,0,.25); }
+.meld-group .tile.rot { transform: rotate(90deg); margin: 0 6px; align-self: flex-end; }
+.opp-melds .meld-group .tile.rot { margin: 0 3px; }
+
+/* flowers tray */
+.flowers { display: flex; gap: 2px; }
+.flowers .tile { width: 26px; height: 36px; }
+
+/* ---------- action bar ---------- */
+.actions {
+  display: flex; gap: 10px; justify-content: center; align-items: center;
+  min-height: 4px;
+}
+.act-btn {
+  border: none; border-radius: 14px; padding: 10px 18px; font-size: 17px; font-weight: 900;
+  font-family: var(--font); cursor: pointer; color: #fff;
+  background: linear-gradient(180deg, #3a4457, #232a38); border: 1px solid rgba(255,255,255,.12);
+  transition: transform .1s;
+}
+.act-btn:active { transform: scale(.94); }
+.act-btn.hu { background: linear-gradient(180deg, #ffe27a, var(--neon-gold)); color: #3a1d00; box-shadow: var(--glow-gold); font-size: 19px; }
+.act-btn.pon { background: linear-gradient(180deg, #ff5c7c, var(--neon-red)); box-shadow: var(--glow-red); }
+.act-btn.pass { background: #1a2030; color: #9fb3ab; }
+
+/* top HUD */
+.hud {
+  position: absolute; top: 8px; left: 8px; z-index: 5; display: flex; gap: 8px; align-items: center;
+}
+.hud .pill {
+  background: rgba(12,15,22,.75); border: 1px solid rgba(255,255,255,.1); border-radius: 999px;
+  padding: 5px 12px; font-size: 12px; font-weight: 800; color: #cfe;
+}
+.hud .icon-btn {
+  width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center;
+  background: rgba(12,15,22,.75); border: 1px solid rgba(255,255,255,.1); color: #fff;
+  cursor: pointer; font-size: 16px;
+}
+
+/* toast / speech bubbles */
+.toast {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%) scale(0);
+  z-index: 20; padding: 14px 30px; border-radius: 16px; font-size: 28px; font-weight: 900;
+  background: rgba(0,0,0,.72); color: #fff; text-shadow: var(--glow-gold);
+  animation: pop 1.1s ease forwards; pointer-events: none; white-space: nowrap;
+}
+@keyframes pop {
+  0% { transform: translate(-50%,-50%) scale(0) rotate(-8deg); opacity: 0; }
+  25% { transform: translate(-50%,-50%) scale(1.15) rotate(3deg); opacity: 1; }
+  70% { transform: translate(-50%,-50%) scale(1) rotate(0); opacity: 1; }
+  100% { transform: translate(-50%,-50%) scale(1); opacity: 0; }
+}
+
+/* ============================================================
+   WIN result overlay + gold burst
+   ============================================================ */
+#result {
+  position: fixed; inset: 0; z-index: 200; display: none;
+  align-items: center; justify-content: center; padding: 20px;
+  background: radial-gradient(60% 60% at 50% 45%, rgba(255,210,76,.14), rgba(0,0,0,.86));
+}
+#result.on { display: flex; }
+.result-card {
+  width: min(560px, 94vw); max-height: 94vh; display: flex; flex-direction: column;
+  background: linear-gradient(180deg, #1a1206, #0c0a06);
+  border: 1.5px solid var(--neon-gold); border-radius: 20px; padding: 16px 18px;
+  box-shadow: var(--glow-gold), 0 30px 80px rgba(0,0,0,.6); text-align: center;
+}
+.rc-body { overflow: auto; flex: 1 1 auto; min-height: 0; }
+.rc-foot { flex: 0 0 auto; padding-top: 10px; margin-top: 6px; border-top: 1px solid rgba(212,175,55,.22); }
+.result-card h2 { font-size: clamp(28px, 6vh, 40px); color: var(--neon-gold); text-shadow: var(--glow-gold); }
+.result-card .taitotal { font-size: 20px; margin: 6px 0; }
+.result-card .taitotal b { color: var(--neon-gold); font-size: 30px; }
+.bd { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin: 10px 0 12px; }
+.bd span { background: rgba(255,210,76,.12); border: 1px solid rgba(255,210,76,.35);
+  color: var(--neon-gold); padding: 4px 10px; border-radius: 999px; font-size: 13px; font-weight: 700; }
+.winhand { display: flex; gap: 3px; justify-content: center; flex-wrap: wrap; margin-bottom: 10px; }
+.winhand .tile { width: 27px; height: 38px; }
+
+/* gold particle burst */
+.spark { position: fixed; z-index: 199; width: 10px; height: 10px; border-radius: 2px;
+  background: var(--neon-gold); pointer-events: none; }
+
+/* ============================================================
+   台味胡牌大動畫
+   ============================================================ */
+/* ⑧ 擲骰決莊 */
+#diceRoll {
+  position: fixed; inset: 0; z-index: 220; display: none;
+  align-items: center; justify-content: center;
+  background: radial-gradient(50% 50% at 50% 45%, rgba(212,175,55,.12), rgba(0,0,0,.86));
+}
+#diceRoll.on { display: flex; }
+#diceRoll .dice-box { text-align: center; }
+#diceRoll .dice-3d { display: flex; gap: 18px; justify-content: center; }
+#diceRoll .dice-3d span {
+  font-size: clamp(56px, 16vmin, 120px); line-height: 1;
+  filter: drop-shadow(0 6px 10px rgba(0,0,0,.6)) drop-shadow(0 0 12px rgba(255,255,255,.5));
+  animation: diceWobble .3s ease-in-out infinite;
+}
+@keyframes diceWobble { 0%,100% { transform: translateY(0) rotate(-6deg); } 50% { transform: translateY(-8px) rotate(6deg); } }
+#diceRoll .dice-say {
+  margin-top: 18px; font-size: clamp(18px, 4vmin, 30px); font-weight: 900;
+  color: #fff; font-family: "Ma Shan Zheng", var(--font); letter-spacing: .1em;
+}
+#diceRoll .dice-say b { color: var(--gold); text-shadow: var(--glow-gold); font-size: 1.3em; }
+
+/* ③ 胡牌逐張翻開 */
+.winhand .tile.flip { animation: flipOpen .45s ease both; transform-origin: bottom center; }
+@keyframes flipOpen { from { transform: perspective(320px) rotateY(88deg); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* ④ 聽牌時摸牌:慢慢翻開 + 一隻手 */
+.hand .tile.reveal { animation: revealFlip .6s cubic-bezier(.3,.8,.3,1) both; transform-origin: bottom center; }
+@keyframes revealFlip { 0% { transform: perspective(340px) rotateY(90deg) translateY(-4px); } 70% { transform: perspective(340px) rotateY(-8deg); } 100% { transform: none; } }
+.draw-hand {
+  position: absolute; font-size: 26px; pointer-events: none; z-index: 6;
+  animation: drawHand 1s ease-out forwards;
+}
+@keyframes drawHand { 0% { opacity: 0; transform: translate(-4px,10px) rotate(-20deg); } 30% { opacity: 1; } 100% { opacity: 0; transform: translate(-4px,-14px) rotate(-8deg); } }
+
+/* ⑩ 喊話 / 表情 */
+#emotePanel {
+  position: absolute; top: 48px; left: 8px; z-index: 30; display: none;
+  flex-wrap: wrap; gap: 6px; width: min(340px, 78vw); padding: 10px;
+  background: rgba(12,12,14,.95); border: 1px solid rgba(212,175,55,.35); border-radius: 12px;
+  box-shadow: 0 12px 30px rgba(0,0,0,.6);
+}
+#emotePanel.on { display: flex; }
+#emotePanel button {
+  border: 1px solid #2a3140; background: #171b24; color: #eee; border-radius: 8px;
+  padding: 7px 10px; font-size: 14px; font-weight: 700; cursor: pointer; font-family: var(--font);
+}
+#emotePanel button:active { transform: scale(.94); }
+.bubble {
+  position: absolute; z-index: 25; max-width: 160px;
+  background: #fff; color: #1a1a1a; font-weight: 800; font-size: 15px;
+  padding: 7px 12px; border-radius: 14px; box-shadow: 0 4px 12px rgba(0,0,0,.4);
+  animation: bubblePop 2.2s ease forwards; transform-origin: center bottom;
+}
+.bubble::after {
+  content: ""; position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%);
+  border: 6px solid transparent; border-top-color: #fff;
+}
+@keyframes bubblePop { 0% { opacity: 0; transform: scale(.5); } 12% { opacity: 1; transform: scale(1.1); } 20% { transform: scale(1); } 85% { opacity: 1; } 100% { opacity: 0; } }
+
+/* ⑪ 牌風綽號 */
+.nicks { display: flex; flex-direction: column; gap: 4px; margin: 10px 0 4px; }
+.nicks .nick { font-size: 13px; color: #cfe; }
+.nicks .nick b { color: var(--gold); }
+
+/* 😤 不服上訴 印章 */
+.appeal-stamp {
+  position: absolute; top: 42%; left: 50%; z-index: 10;
+  transform: translate(-50%,-50%) rotate(-14deg);
+  font-family: "Ma Shan Zheng", var(--font); font-size: clamp(40px, 12vmin, 90px); font-weight: 900;
+  color: #e0122a; border: 5px solid #e0122a; border-radius: 12px; padding: 6px 22px;
+  letter-spacing: .08em; background: rgba(255,255,255,.06);
+  text-shadow: 0 2px 6px rgba(0,0,0,.5); box-shadow: 0 0 24px rgba(224,18,42,.5);
+  animation: stampSlam .5s cubic-bezier(.2,1.4,.3,1) both; pointer-events: none;
+}
+@keyframes stampSlam { 0% { transform: translate(-50%,-50%) rotate(-14deg) scale(2.4); opacity: 0; } 60% { opacity: 1; } 100% { transform: translate(-50%,-50%) rotate(-14deg) scale(1); opacity: 1; } }
+
+/* 🔍 檢視這局 */
+.rv-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-top: 1px solid rgba(212,175,55,.15); }
+.rv-name { width: 62px; flex: 0 0 auto; font-size: 13px; font-weight: 800; color: #cfd8d2; text-align: right; }
+.rv-name.won { color: var(--gold); } .rv-name.lost { color: #ff6b6b; }
+.rv-tiles { display: flex; flex-wrap: wrap; gap: 1px; }
+.rv-tiles .tile { width: 20px; height: 28px; }
+
+/* #5 聽牌提示列 + 手牌發亮 */
+.tenpai-bar { display: none; align-items: center; justify-content: center; gap: 3px; }
+.tenpai-bar.on { display: flex; margin-bottom: 3px; }
+.tenpai-bar .tp-label {
+  color: #201400; background: linear-gradient(180deg, #f2dd8c, var(--gold)); font-weight: 900;
+  font-size: 13px; padding: 2px 12px; border-radius: 999px; box-shadow: 0 0 10px rgba(212,175,55,.6); letter-spacing: .1em;
+}
+.tenpai-bar .tp-tile { width: 22px; height: 31px; filter: drop-shadow(0 0 4px var(--gold)); animation: tpfloat 1.6s ease-in-out infinite; }
+@keyframes tpfloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+.hand.tenpai { filter: drop-shadow(0 0 7px rgba(212,175,55,.55)); }
+/* #6 可吃碰的牌閃爍 */
+.tile.flash { animation: tileflash .7s ease-in-out infinite; }
+@keyframes tileflash { 0%,100% { filter: none; } 50% { filter: drop-shadow(0 0 6px var(--neon-cyan)) drop-shadow(0 0 6px var(--neon-cyan)); } }
+/* #9 爽度:全場震動 */
+.table.shake { animation: tableShake .55s cubic-bezier(.36,.07,.19,.97); }
+@keyframes tableShake {
+  10%,90% { transform: translate(-1px,0); } 20%,80% { transform: translate(3px,0); }
+  30%,50%,70% { transform: translate(-5px,0); } 40%,60% { transform: translate(5px,0); }
+}
+
+#winanim {
+  position: fixed; inset: 0; z-index: 240; display: none; overflow: hidden;
+  pointer-events: none;
+}
+#winanim.on { display: block; }
+#winanim .flash {
+  position: absolute; inset: 0;
+  background: radial-gradient(50% 50% at 50% 45%, rgba(255,210,76,.35), rgba(193,39,45,.25) 40%, transparent 72%);
+  animation: wflash 1.6s ease-out forwards;
+}
+@keyframes wflash { 0%{opacity:0} 15%{opacity:1} 100%{opacity:0} }
+#winanim .rays {
+  position: absolute; top: 45%; left: 50%; width: 200vmax; height: 200vmax;
+  transform: translate(-50%,-50%) scale(0); transform-origin: center;
+  background: repeating-conic-gradient(from 0deg, rgba(255,210,76,.16) 0deg 6deg, transparent 6deg 12deg);
+  animation: wrays 1.6s ease-out forwards;
+}
+@keyframes wrays { 0%{transform:translate(-50%,-50%) scale(0) rotate(0);opacity:0} 25%{opacity:.9} 100%{transform:translate(-50%,-50%) scale(1) rotate(60deg);opacity:0} }
+#winanim .stamp {
+  position: absolute; top: 42%; left: 50%; transform: translate(-50%,-50%) scale(0) rotate(-18deg);
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  animation: wstamp 1.7s cubic-bezier(.2,1.4,.4,1) forwards;
+}
+.stamp .big {
+  font-size: clamp(56px, 14vmin, 130px); font-weight: 900; color: #fff2cf;
+  -webkit-text-stroke: 3px #a2201a;
+  text-shadow: 0 0 20px rgba(255,210,76,.9), 0 6px 0 rgba(120,20,16,.5);
+  font-family: "Ma Shan Zheng","Microsoft JhengHei",serif; letter-spacing: .06em;
+}
+.stamp .sub {
+  font-size: clamp(16px,3.4vmin,26px); font-weight: 900; color: #fff;
+  background: #a2201a; padding: 3px 18px; border-radius: 999px;
+  box-shadow: 0 0 14px rgba(255,210,76,.6); letter-spacing: .3em;
+}
+@keyframes wstamp {
+  0%{transform:translate(-50%,-50%) scale(0) rotate(-18deg);opacity:0}
+  30%{transform:translate(-50%,-50%) scale(1.15) rotate(4deg);opacity:1}
+  45%{transform:translate(-50%,-50%) scale(.96) rotate(-2deg)}
+  60%{transform:translate(-50%,-50%) scale(1) rotate(0)}
+  85%{opacity:1} 100%{transform:translate(-50%,-50%) scale(1) rotate(0);opacity:0}
+}
+.coin {
+  position: absolute; font-size: 26px; will-change: transform; top: -8%;
+  filter: drop-shadow(0 2px 3px rgba(0,0,0,.4));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast, #rotate .phone { animation: none; }
+  #winanim .rays { display: none; }
+}
