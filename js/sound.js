@@ -61,9 +61,12 @@
   };
   const BOOSTED_RECORDED_CLAIMS = new Set(['pung', 'kong', 'chow', 'hu', 'tsumo']);
   const RECORDED_VOICE_VOLUME = 0.33;
+  const TILE_CLIP_GAIN = 0.65;
+  const TILE_TTS_VOLUME = 0.08;
   const clips = {};            // key -> HTMLAudioElement
   const boostedSources = new WeakMap();
-  let boostedGain = null, boostedLimiter = null;
+  const tileSources = new WeakMap();
+  let boostedGain = null, boostedLimiter = null, tileGain = null;
   let voicesTried = false;
 
   // Claim calls need more presence than tile names, but raw 3x gain clips loudly.
@@ -94,6 +97,25 @@
       return false;
     }
   }
+  function routeTileVoice(audio) {
+    const a = ac();
+    if (!a) return false;
+    try {
+      if (!tileGain) {
+        tileGain = a.createGain();
+        tileGain.gain.value = TILE_CLIP_GAIN;
+        tileGain.connect(a.destination);
+      }
+      if (!tileSources.has(audio)) {
+        const source = a.createMediaElementSource(audio);
+        source.connect(tileGain);
+        tileSources.set(audio, source);
+      }
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
   // load only the files listed in assets/audio/manifest.json → no 404 spam.
   // manifest is a JSON array of filenames, e.g. ["pung.m4a","hu.mp3"].
   function preloadVoices() {
@@ -104,7 +126,8 @@
         (files || []).forEach((f) => {
           const key = String(f).replace(/\.[^.]+$/, '');
           const a = new Audio('assets/audio/' + f); a.preload = 'auto';
-          a.volume = BOOSTED_RECORDED_CLAIMS.has(key) ? 1 : RECORDED_VOICE_VOLUME;
+          const isTile = /^(?:[mps][1-9]|z[1-7])$/.test(key);
+          a.volume = BOOSTED_RECORDED_CLAIMS.has(key) || isTile ? 1 : RECORDED_VOICE_VOLUME;
           clips[key] = a;
         });
       })
@@ -125,8 +148,13 @@
   function tileVoice(code, spoken) {
     if (!enabled) return;
     const a = clips[code];
-    if (a) { try { a.currentTime = 0; a.play(); return; } catch (e) {} }
-    if (spoken) say(spoken, 0.3);
+    if (a) {
+      try {
+        routeTileVoice(a);
+        a.currentTime = 0; a.play(); return;
+      } catch (e) {}
+    }
+    if (spoken) say(spoken, TILE_TTS_VOLUME);
   }
 
   // Chinese TTS: 報牌 / 碰 / 槓 / 胡啦
