@@ -268,7 +268,7 @@ body {
 /* 明星3缺一式滿版牌桌:不留黑邊,手牌撐滿整個螢幕寬。
    牌尺寸由 index.html 依螢幕寬算出的 --tile-w/--tile-h 驅動,全部牌都由它衍生。 */
 #app { position: fixed; inset: 0; display: none; overflow: hidden;
-  --tile-w: 40px; --tile-h: 56px; --sb-h: clamp(22px, 4.2vh, 30px);
+  --sb-h: clamp(22px, 4.2vh, 30px);
   --side: clamp(64px, 11.5vw, 96px);   /* 兩側固定寬 → 大海(中央)不會因副露變小 */
   /* 明星3缺一風:海景天空背景(原創 CSS 場景)*/
   background:
@@ -639,6 +639,12 @@ body {
 .bd { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin: 10px 0 12px; }
 .bd span { background: rgba(255,210,76,.12); border: 1px solid rgba(255,210,76,.35);
   color: var(--neon-gold); padding: 4px 10px; border-radius: 999px; font-size: 13px; font-weight: 700; }
+.multi-winners { width: min(100%, 520px); margin: 6px auto 10px; }
+.multi-winner { padding: 8px 0 4px; border-top: 1px solid rgba(255,210,76,.22); }
+.multi-winner:first-child { border-top: 0; }
+.multi-winner-title { color: #e8f7f0; font-size: 16px; font-weight: 800; }
+.multi-winner-title b { color: var(--neon-gold); font-size: 24px; }
+.multi-winner .bd { margin: 5px 0 2px; }
 .winhand { display: flex; gap: 3px; justify-content: center; flex-wrap: wrap; margin-bottom: 10px; }
 .winhand .tile { width: 27px; height: 38px; }
 

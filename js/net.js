@@ -72,7 +72,11 @@
     if (!isSupa() || !code || connecting) return;
     if (channel && channel.state === 'joined') return;
     connecting = true;
-    try { await openChannel(code); } catch (e) {} finally { connecting = false; }
+    try {
+      await openChannel(code);
+      if (role === 'guest') send('rejoin', {});
+      else if (role === 'host') send('host-rejoin', {});
+    } catch (e) {} finally { connecting = false; }
   }
   if (typeof document !== 'undefined') {
     document.addEventListener('visibilitychange', () => { if (!document.hidden) ensureConnected(); });

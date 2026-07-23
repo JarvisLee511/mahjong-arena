@@ -12,7 +12,7 @@
 
   const WIND = { z1: '東', z2: '南', z3: '西', z4: '北' };
   const SEAT_EL = { 1: 'seatRight', 2: 'seatTop', 3: 'seatLeft' };  // by screen position
-  const DIR = { 0: 'self', 1: 'right', 2: 'top', 3: 'left' };
+  const DIR = { 0: 'bottom-seat', 1: 'right-seat', 2: 'top-seat', 3: 'left-seat' };
 
   // ---------- tile elements ---------------------------------
   function tileEl(t, extraCls) {
@@ -33,9 +33,13 @@
   // ============================================================
   let selected = null;
   let swapSel = new Set();
+  let swapViewKey = null;
 
   function renderView(v, handlers) {
     handlers = handlers || {};
+    const nextSwapKey = v.phase === 'swap' && v.swap ? `${v.mySeat}:${v.swap.round}` : null;
+    if (nextSwapKey !== swapViewKey) swapSel.clear();
+    swapViewKey = nextSwapKey;
     if (v.phase === 'swap') {
       $('#wallCount').innerHTML = '換三張<small> 美麻</small>';
       $('#roundWind').textContent = `第 ${v.swap ? v.swap.round : 1} / 2 輪 · 各選 3 張傳下家`;
@@ -43,7 +47,7 @@
       $('#wallCount').innerHTML = v.wall + '<small> 張</small>';
       $('#roundWind').textContent = WIND[v.roundWind] + '風圈' + (v.streak ? ` · 連${v.streak}` : '');
     }
-    renderWalls(v.phase === 'swap' ? 144 : v.wall);
+    renderWalls(v);
 
     // 自家狀態:風位 + 分數 + 莊/連莊
     const si = $('#selfInfo');
@@ -61,16 +65,20 @@
     }
     renderPond(v);
     renderActions(v, handlers);
+    document.querySelector('.table').classList.toggle('has-actions', $('#actions').childElementCount > 0);
     renderTenpai(v);
     renderSelfBar(v);
+    requestAnimationFrame(fitTableGeometry);
   }
 
   // #5 聽牌提示列:顯示「聽」+ 聽的牌漂在旁邊
   function renderTenpai(v) {
     const bar = $('#tenpaiBar'); if (!bar) return;
     bar.innerHTML = '';
+    const hasActionPrompt = $('#actions') && $('#actions').childElementCount > 0;
     const show = v.waits && v.waits.length && v.phase === 'act' && v.turn === v.mySeat;
     bar.classList.toggle('on', !!show);
+    bar.classList.toggle('with-actions', !!show && hasActionPrompt);
     if (!show) return;
     bar.appendChild(el('span', 'tp-label', '聽'));
     v.waits.forEach((t) => {
@@ -87,12 +95,13 @@
     av.appendChild(face);
     const wind = window.MJ.SEAT_WIND[((p - v.dealerIndex) + 4) & 3];
     av.appendChild(el('div', 'wind', WIND[wind]));
-    av.appendChild(el('div', 'nm', sp.name + (sp.ai ? ' 🤖' : '')));
+    av.appendChild(el('div', 'nm', sp.name + (sp.ai ? ' · AI' : '')));
     const sc = el('div', 'sc' + (sp.score > 0 ? ' pos' : sp.score < 0 ? ' neg' : ''), (sp.score >= 0 ? '+' : '') + sp.score);
     av.appendChild(sc);
     if (p === v.dealerIndex && v.streak > 0) av.appendChild(el('div', 'streak', '連' + v.streak));
     wrap.appendChild(av);
     const backs = el('div', 'backs');
+    backs.classList.toggle('short', sp.handCount <= 8);
     for (let i = 0; i < sp.handCount; i++) backs.appendChild(backEl());
     wrap.appendChild(backs);
     if (sp.melds && sp.melds.length) {
@@ -114,7 +123,8 @@
     bar.appendChild(el('span', 'sb-wind' + (dealer ? ' dealer' : ''), WIND[meWind] + (dealer ? ' 莊' : '')));
     const roundTxt = v.phase === 'swap' ? '換三張' : (WIND[v.roundWind] + '風圈' + (v.streak ? ' · 連' + v.streak : ''));
     bar.appendChild(el('span', 'sb-info', roundTxt));
-    bar.appendChild(el('span', 'sb-coin', '🪙 ' + (me.score >= 0 ? '+' : '') + me.score));
+    if (v.furiten) bar.appendChild(el('span', 'sb-status', '過水'));
+    bar.appendChild(el('span', 'sb-coin', '籌碼 ' + (me.score >= 0 ? '+' : '') + me.score));
   }
 
   function renderSelf(v, handlers) {
@@ -151,7 +161,7 @@
     const addTile = (t, idx, isDrawn) => {
       const cls = [];
       const key = t + '#' + idx;                    // identify duplicate tiles by slot
-      if (!swapping && selected === t) cls.push('sel');
+      if (!swapping && selected === key) cls.push('sel');
       if (swapping && swapSel.has(key)) cls.push('sel');
       if (v.hint && v.hint.includes(t)) cls.push('hintable');
       if (flashSet.has(t)) cls.push('flash');
@@ -163,8 +173,8 @@
         renderView(v, handlers);   // refresh hand + the confirm button count
       });
       else if (interactive) e.addEventListener('click', () => {
-        if (selected === t) { selected = null; handlers.onAct && handlers.onAct({ type: 'discard', tile: t }); }
-        else { selected = t; renderSelf(v, handlers); }
+        if (selected === key) { selected = null; handlers.onAct && handlers.onAct({ type: 'discard', tile: t }); }
+        else { selected = key; renderSelf(v, handlers); }
       });
       hand.appendChild(e);
     };
@@ -175,11 +185,113 @@
         const h = el('div', 'draw-hand', '✋'); hand.appendChild(h); setTimeout(() => h.remove(), 1000);
       }
     }
+    fitPlayerRack();
   }
+
+  function fitPlayerRack() {
+    const rack = document.querySelector('.player-rack');
+    if (!rack) return;
+    rack.style.setProperty('--rack-scale', '1');
+    const css = getComputedStyle(document.documentElement);
+    const safeLeft = parseFloat(css.getPropertyValue('--safe-left')) || 0;
+    const safeRight = parseFloat(css.getPropertyValue('--safe-right')) || 0;
+    rack.style.setProperty('--rack-safe-shift', `${(safeLeft - safeRight) / 2}px`);
+    const available = Math.max(1, window.innerWidth - safeLeft - safeRight - 10);
+    const contentWidth = rack.scrollWidth;
+    rack.style.setProperty('--rack-scale', Math.min(1, available / Math.max(1, contentWidth)).toFixed(4));
+  }
+
+  function fitTableGeometry() {
+    const app = document.querySelector('#app');
+    const center = document.querySelector('.center');
+    const leftSeat = document.querySelector('.seat-left');
+    const rightSeat = document.querySelector('.seat-right');
+    const leftBacks = leftSeat && leftSeat.querySelector('.backs');
+    const rightBacks = rightSeat && rightSeat.querySelector('.backs');
+    if (!app || !center || !leftBacks || !rightBacks) return;
+
+    const tableRect = center.getBoundingClientRect();
+    if (!tableRect.width || !tableRect.height) return;
+    const angle = Math.atan2(tableRect.width * 0.22, tableRect.height) * 180 / Math.PI;
+    app.style.setProperty('--table-side-angle', `${angle.toFixed(3)}deg`);
+    app.style.setProperty('--table-side-angle-neg', `${(-angle).toFixed(3)}deg`);
+
+    const positionBacks = (backs, seat, side) => {
+      const seatRect = seat.getBoundingClientRect();
+      const anchorY = seatRect.top + backs.offsetTop;
+      const progress = Math.min(1, Math.max(0, (anchorY - tableRect.top) / tableRect.height));
+      const inset = tableRect.width * 0.22 * (1 - progress);
+      const edgeX = side === 'left' ? tableRect.left + inset : tableRect.right - inset;
+      const railGap = Math.min(5, Math.max(2, backs.offsetWidth * 0.12));
+      const targetX = edgeX + (side === 'left' ? -railGap : railGap);
+      const offset = side === 'left' ? targetX - seatRect.left : seatRect.right - targetX;
+      backs.style.setProperty('--side-hand-x', `${offset.toFixed(2)}px`);
+    };
+
+    positionBacks(leftBacks, leftSeat, 'left');
+    positionBacks(rightBacks, rightSeat, 'right');
+
+    const fitSideMelds = (seat) => {
+      const melds = seat.querySelector('.opp-melds');
+      const avatar = seat.querySelector('.avatar');
+      if (!melds || !avatar) return;
+      melds.style.setProperty('--opp-tile-scale', '.30');
+      const seatRect = seat.getBoundingClientRect();
+      const avatarRect = avatar.getBoundingClientRect();
+      const available = Math.max(1, seatRect.bottom - avatarRect.bottom - 16);
+      if (melds.offsetHeight > available) {
+        const scale = Math.max(.18, .30 * available / melds.offsetHeight);
+        melds.style.setProperty('--opp-tile-scale', scale.toFixed(4));
+      }
+    };
+
+    fitSideMelds(leftSeat);
+    fitSideMelds(rightSeat);
+
+    const topSeat = document.querySelector('.seat-top');
+    const topBacks = topSeat && topSeat.querySelector('.backs');
+    if (!topSeat || !topBacks) return;
+    const topSeatRect = topSeat.getBoundingClientRect();
+    const topBacksRect = topBacks.getBoundingClientRect();
+    const farRight = tableRect.right - tableRect.width * 0.22;
+    const edgeGap = 8;
+    const rootStyle = getComputedStyle(document.documentElement);
+    const safeLeft = parseFloat(rootStyle.getPropertyValue('--safe-left')) || 0;
+    const safeRight = parseFloat(rootStyle.getPropertyValue('--safe-right')) || 0;
+    const viewportLeft = safeLeft + 8;
+    const viewportRight = window.innerWidth - safeRight - 8;
+    const topMelds = topSeat.querySelector('.opp-melds');
+    const topFlowers = topSeat.querySelector('.opp-flowers');
+
+    if (topMelds) {
+      topMelds.style.setProperty('--opp-tile-scale', '.30');
+      const leftAvatarRect = leftSeat.querySelector('.avatar').getBoundingClientRect();
+      const leftEdge = Math.max(viewportLeft, leftAvatarRect.right + edgeGap);
+      const rightEdge = topBacksRect.left - edgeGap;
+      const available = Math.max(1, rightEdge - leftEdge);
+      if (topMelds.offsetWidth > available) {
+        const scale = Math.max(.16, .30 * available / topMelds.offsetWidth);
+        topMelds.style.setProperty('--opp-tile-scale', scale.toFixed(4));
+      }
+      const targetLeft = Math.max(leftEdge, rightEdge - topMelds.offsetWidth);
+      topMelds.style.left = `${(targetLeft - topSeatRect.left).toFixed(2)}px`;
+    }
+    if (topFlowers) {
+      const leftEdge = Math.max(farRight + edgeGap, topBacksRect.right + edgeGap);
+      const targetLeft = Math.min(viewportRight - topFlowers.offsetWidth, leftEdge);
+      topFlowers.style.right = 'auto';
+      topFlowers.style.left = `${(targetLeft - topSeatRect.left).toFixed(2)}px`;
+    }
+  }
+
+  window.addEventListener('resize', () => requestAnimationFrame(() => {
+    fitPlayerRack();
+    fitTableGeometry();
+  }));
 
   function renderPond(v) {
     const pond = $('#pond'); pond.innerHTML = '';
-    const PER_ROW = { 0: 8, 1: 4, 2: 8, 3: 4 };   // by screen position (self/top wide, sides narrow)
+    const PER_ROW = { 0: 12, 1: 8, 2: 12, 3: 8 };
     for (const p of [0, 1, 2, 3]) {
       const pos = (p - v.mySeat + 4) & 3;
       const r = el('div', 'river ' + DIR[pos]);
@@ -189,7 +301,8 @@
         const row = el('div', 'river-row');
         ds.slice(i, i + per).forEach((t, j) => {
           const idx = i + j;
-          const isLast = v.lastDiscard && v.lastDiscard.from === p && idx === ds.length - 1;
+          const isLast = v.lastDiscard && v.lastDiscard.from === p &&
+            v.lastDiscard.tile === t && idx === ds.length - 1;
           row.appendChild(tileEl(t, isLast ? 'last' : ''));
         });
         r.appendChild(row);
@@ -198,29 +311,81 @@
     }
   }
 
-  // 四面立體牌山圍住大海;每面段數 = 剩餘張數平均分四面,隨摸牌變短
-  function renderWalls(n) {
-    const ids = ['wallT', 'wallB', 'wallL', 'wallR'];
-    const perWall = Math.max(0, Math.min(11, Math.round(n / 6)));  // 全副約每面11段
-    for (const id of ids) {
-      const box = document.getElementById(id); if (!box) continue;
-      if (box.childElementCount !== perWall) {
+  // Stable two-tile stacks make normal draws and replacement draws visibly
+  // consume opposite ends of the wall without reflowing the table.
+  function renderWalls(v) {
+    const total = Math.max(0, Math.round(Number.isFinite(v.wallStart) ? v.wallStart : v.wall));
+    const drawnFront = Math.max(0, Math.min(total, Math.round(v.wallDrawnFront || 0)));
+    const drawnBack = Math.max(0, Math.min(total - drawnFront, Math.round(
+      Number.isFinite(v.wallDrawnBack) ? v.wallDrawnBack : Math.max(0, total - drawnFront - v.wall)
+    )));
+    const liveStart = drawnFront;
+    const liveEnd = total - drawnBack;
+    const stackTotal = Math.ceil(total / 2);
+    const base = Math.floor(stackTotal / 4);
+    const extra = stackTotal % 4;
+    const sides = ['wallB', 'wallR', 'wallT', 'wallL'];
+    const capacities = sides.map((_, index) => base + (index < extra ? 1 : 0));
+    let slotOffset = 0;
+
+    sides.forEach((id, sideIndex) => {
+      const box = document.getElementById(id); if (!box) return;
+      const capacity = capacities[sideIndex];
+      if (box.childElementCount !== capacity) {
         box.innerHTML = '';
-        for (let i = 0; i < perWall; i++) box.appendChild(el('div', 'wseg'));
+        for (let i = 0; i < capacity; i++) {
+          const stack = el('div', 'wall-stack');
+          stack.setAttribute('aria-hidden', 'true');
+          stack.appendChild(el('i', 'wall-layer lower'));
+          stack.appendChild(el('i', 'wall-layer upper'));
+          box.appendChild(stack);
+        }
       }
-    }
+
+      [...box.children].forEach((stack, localIndex) => {
+        const globalIndex = slotOffset + localIndex;
+        const tileStart = globalIndex * 2;
+        const tileEnd = Math.min(total, tileStart + 2);
+        let count = 0;
+        for (let tileIndex = tileStart; tileIndex < tileEnd; tileIndex++) {
+          if (tileIndex >= liveStart && tileIndex < liveEnd) count++;
+        }
+        let cls = count === 2 ? 'full' : (count === 1 ? 'single' : 'empty');
+        if (count && liveStart >= tileStart && liveStart < tileEnd) cls += ' draw-front';
+        if (count && liveEnd - 1 >= tileStart && liveEnd - 1 < tileEnd) cls += ' draw-back';
+        stack.className = 'wall-stack ' + cls;
+        stack.dataset.count = count;
+      });
+      box.classList.toggle('exhausted', ![...box.children].some((stack) => stack.dataset.count !== '0'));
+      slotOffset += capacity;
+    });
   }
 
   function renderActions(v, handlers) {
     const bar = $('#actions'); bar.innerHTML = '';
-    const mk = (label, cls, fn) => { const b = el('button', 'act-btn ' + cls, label); b.addEventListener('click', fn); bar.appendChild(b); };
+    const mk = (label, cls, fn, detail = '') => {
+      const b = el('button', 'act-btn ' + cls);
+      b.appendChild(el('span', 'act-label', label));
+      if (detail) b.appendChild(el('small', 'act-detail', detail));
+      b.title = detail ? `${label} ${detail}` : label;
+      b.addEventListener('click', fn);
+      bar.appendChild(b);
+    };
     const tName = window.MJ.tileName;
+    const chowName = (tiles) => {
+      const suit = tiles[0] && tiles[0][0];
+      const suitName = { m: '萬', p: '筒', s: '條' }[suit];
+      if (suitName && tiles.every((tile) => tile[0] === suit)) {
+        return tiles.map((tile) => tile[1]).join('') + suitName;
+      }
+      return tiles.map(tName).join('');
+    };
 
     if (v.phase === 'swap' && v.swap) {
       if (v.swap.done) { const b = el('button', 'act-btn pass', '已選好,等待其他家…'); b.disabled = true; bar.appendChild(b); return; }
       const n = swapSel.size;
       const label = n < 3 ? `換三張:再選 ${3 - n} 張 給下家` : '傳給下家 ▶';
-      const b = el('button', 'act-btn ' + (n === 3 ? 'hu' : ''), label);
+      const b = el('button', 'act-btn swap-action ' + (n === 3 ? 'hu' : ''), label);
       b.disabled = n !== 3;
       b.addEventListener('click', () => {
         const tiles = [...swapSel].map((k) => k.slice(0, k.indexOf('#')));
@@ -234,14 +399,18 @@
       const A = v.myActions;
       const ts = A.find((a) => a.type === 'tsumo');
       if (ts) mk('自摸', 'hu', () => handlers.onAct(ts));
-      A.filter((a) => a.type === 'ankong').forEach((a) => mk('暗槓 ' + tName(a.tile), '', () => handlers.onAct(a)));
-      A.filter((a) => a.type === 'addkong').forEach((a) => mk('加槓 ' + tName(a.tile), '', () => handlers.onAct(a)));
+      A.filter((a) => a.type === 'ankong').forEach((a) => mk('暗槓', '', () => handlers.onAct(a), tName(a.tile)));
+      A.filter((a) => a.type === 'addkong').forEach((a) => mk('加槓', '', () => handlers.onAct(a), tName(a.tile)));
+    } else if (v.phase === 'claim' && v.claimSubmitted) {
+      const waiting = el('button', 'act-btn claim-wait', '已選擇，等待其他家');
+      waiting.disabled = true;
+      bar.appendChild(waiting);
     } else if (v.phase === 'claim' && v.myClaims && v.myClaims.length) {
       const C = v.myClaims;
       if (C.find((o) => o.type === 'hu')) mk('胡', 'hu', () => handlers.onClaim({ type: 'hu' }));
       if (C.find((o) => o.type === 'kong')) mk('槓', 'pon', () => handlers.onClaim({ type: 'kong' }));
       if (C.find((o) => o.type === 'pung')) mk('碰', 'pon', () => handlers.onClaim({ type: 'pung' }));
-      C.filter((o) => o.type === 'chow').forEach((o) => mk('吃 ' + o.tiles.map(tName).join(''), '', () => handlers.onClaim(o)));
+      C.filter((o) => o.type === 'chow').forEach((o) => mk('吃', '', () => handlers.onClaim(o), chowName(o.tiles)));
       mk('過', 'pass', () => handlers.onClaim({ type: 'pass' }));
     }
   }
@@ -300,10 +469,27 @@
       body.appendChild(el('div', 'taitotal', '牌牆摸完,無人胡牌'));
     } else {
       const w0 = r.winners[0];
-      body.appendChild(el('h2', '', r.selfDraw ? '自摸!' : '胡牌!'));
-      const who = r.winners.map((x) => v.players[x.player].name).join('、');
-      const tt = el('div', 'taitotal'); tt.innerHTML = `${who} &nbsp; <b>${w0.tai}</b> 台`; body.appendChild(tt);
-      if (r.winHand) {
+      const isMultiHu = !r.selfDraw && r.winners.length > 1;
+      body.appendChild(el('h2', '', isMultiHu ? '一炮多響!' : (r.selfDraw ? '自摸!' : '胡牌!')));
+      if (isMultiHu) {
+        const list = el('div', 'multi-winners');
+        r.winners.forEach((winner) => {
+          const item = el('div', 'multi-winner');
+          const title = el('div', 'multi-winner-title');
+          title.append(document.createTextNode(v.players[winner.player].name + ' '), el('b', '', winner.tai), document.createTextNode(' 台'));
+          item.appendChild(title);
+          const bd = el('div', 'bd');
+          (winner.breakdown || []).forEach((entry) => bd.appendChild(el('span', '', entry.name + ' ' + entry.tai)));
+          item.appendChild(bd);
+          list.appendChild(item);
+        });
+        body.appendChild(list);
+      } else {
+        const tt = el('div', 'taitotal');
+        tt.append(document.createTextNode(v.players[w0.player].name + ' '), el('b', '', w0.tai), document.createTextNode(' 台'));
+        body.appendChild(tt);
+      }
+      if (r.winHand && !isMultiHu) {
         const wh = el('div', 'winhand');
         let fi = 0;                                   // ③ 逐張翻開:遞增延遲
         const addFlip = (t, extra) => { const e = tileEl(t, (extra || '') + ' flip'); e.style.animationDelay = (fi++ * 70) + 'ms'; wh.appendChild(e); };
@@ -312,14 +498,20 @@
         if (!r.selfDraw) addFlip(r.winTile, 'last');
         body.appendChild(wh);
       }
-      const bd = el('div', 'bd'); w0.breakdown.forEach((b) => bd.appendChild(el('span', '', b.name + ' ' + b.tai))); body.appendChild(bd);
+      if (!isMultiHu) {
+        const bd = el('div', 'bd'); w0.breakdown.forEach((b) => bd.appendChild(el('span', '', b.name + ' ' + b.tai))); body.appendChild(bd);
+      }
     }
     const sb = el('div', 'taitotal'); sb.style.fontSize = '15px'; sb.style.color = '#cfe';
     sb.textContent = v.players.map((p) => `${p.name} ${p.score >= 0 ? '+' : ''}${p.score}`).join('   ');
     body.appendChild(sb);
     if (v.nicks && v.nicks.length) {                 // ⑪ 牌風綽號
       const nk = el('div', 'nicks');
-      v.nicks.forEach((n) => { const line = el('div', 'nick'); line.innerHTML = `${n.name} — <b>${n.tag}</b>`; nk.appendChild(line); });
+      v.nicks.forEach((n) => {
+        const line = el('div', 'nick');
+        line.append(document.createTextNode(n.name + ' — '), el('b', '', n.tag));
+        nk.appendChild(line);
+      });
       body.appendChild(nk);
     }
     if (v.progress) { const pg = el('div', 'hint', v.progress); pg.style.marginTop = '4px'; body.appendChild(pg); }
@@ -327,7 +519,11 @@
       body.appendChild(Object.assign(el('h2', '', '🏆 賽局結束!'), { style: 'font-size:26px;margin-top:8px' }));
       const rk = el('div', 'nicks');
       const medal = ['🥇', '🥈', '🥉', '4️⃣'];
-      v.ranking.forEach((p, i) => { const line = el('div', 'nick'); line.innerHTML = `${medal[i]} ${p.name} — <b>${p.score >= 0 ? '+' : ''}${p.score}</b>`; rk.appendChild(line); });
+      v.ranking.forEach((p, i) => {
+        const line = el('div', 'nick');
+        line.append(document.createTextNode(`${medal[i]} ${p.name} — `), el('b', '', (p.score >= 0 ? '+' : '') + p.score));
+        rk.appendChild(line);
+      });
       body.appendChild(rk);
     }
 
@@ -395,7 +591,8 @@
         clearInterval(iv);
         const d1 = 1 + ((Math.random() * 6) | 0), d2 = 1 + ((Math.random() * 6) | 0);
         a.textContent = faces[d1 - 1]; b.textContent = faces[d2 - 1];
-        say.innerHTML = `擲出 <b>${d1 + d2}</b> 點 · 莊家 <b>${name}</b>`;
+        say.innerHTML = '';
+        say.append(document.createTextNode('擲出 '), el('b', '', d1 + d2), document.createTextNode(' 點 · 莊家 '), el('b', '', name));
         setTimeout(() => { ov.classList.remove('on'); cb && cb(); }, 1300);
       }
     }, 90);
@@ -456,6 +653,10 @@
     const v = {
       mySeat: 0, phase: G.phase, turn: G.turn, dealerIndex: snap.dealerIndex,
       roundWind, wall: snap.wall, streak,
+      wallStart: snap.wallStart,
+      wallDrawnFront: snap.wallDrawnFront,
+      wallDrawnBack: snap.wallDrawnBack,
+      furiten: G.furiten[0],
       lastDiscard: snap.lastDiscard,
       players: [0, 1, 2, 3].map((p) => ({
         seat: p, name: NAMES[p], ai: p !== 0, score: scores[p],
@@ -465,7 +666,8 @@
       myHand: me.hand.slice(),
       myDrawn: (G.phase === 'act' && G.turn === 0) ? me._drawn : null,
       myActions: (G.phase === 'act' && G.turn === 0) ? G.actActions(0) : null,
-      myClaims: (G.phase === 'claim' && G.pendingClaims && G.pendingClaims.options[0]) || null,
+      myClaims: (G.phase === 'claim' && G.pendingClaims && G.pendingClaims.options[0] && !G.pendingClaims.declared[0])
+        ? G.pendingClaims.options[0] : null,
       claimTile: (G.phase === 'claim' && G.pendingClaims) ? G.pendingClaims.tile : null,
       swap: (G.phase === 'swap') ? { round: G.swapRound, done: G.swapReady(0) } : null,
       result: (G.phase === 'over') ? G.result : null,   // ← 結算卡需要這個(先前遺漏→結算崩潰卡死)
@@ -626,11 +828,11 @@
   seg('ruleSeg', 'rule', 'rule'); seg('lvlSeg', 'lvl', 'lvl'); seg('lenSeg', 'len', 'len'); seg('stakeSeg', 'stake', 'stake'); seg('multiSeg', 'multi', 'multi');
   $('#btnJoinToggle').addEventListener('click', () => { const f = $('#joinField'); f.style.display = f.style.display === 'none' ? 'flex' : 'none'; });
   $('#btnSolo').addEventListener('click', () => { MJSound.unlock(); startSolo(); });
-  $('#btnSound').addEventListener('click', (e) => { MJSound.enabled = !MJSound.enabled; e.currentTarget.textContent = MJSound.enabled ? '🔊' : '🔇'; });
+  $('#btnSound').addEventListener('click', (e) => { MJSound.enabled = !MJSound.enabled; e.currentTarget.textContent = MJSound.enabled ? '♪' : '×'; });
   // ⑥ 託管(自動摸打):開啟後你的回合由電腦代打(含自動胡),再按一下收回
   $('#btnAuto').addEventListener('click', (e) => {
     autopilot = !autopilot;
-    e.currentTarget.textContent = autopilot ? '⏸' : '⏩';
+    e.currentTarget.textContent = autopilot ? 'Ⅱ' : '»';
     e.currentTarget.style.color = autopilot ? '#47d18a' : '';
     if (autopilot) { MJView.toast('託管中,電腦代打'); soloAutoStep(); }
   });
@@ -660,8 +862,8 @@
   const btnMusic = $('#btnMusic');
   if (btnMusic) btnMusic.addEventListener('click', (e) => {
     e.stopPropagation();
-    if (btnMusic.dataset.on === '0') { btnMusic.dataset.on = '1'; btnMusic.textContent = '🎵'; MJSound.unlock(); MJSound.bgmStart(); }
-    else { btnMusic.dataset.on = '0'; btnMusic.textContent = '🔇'; MJSound.bgmStop(); }
+    if (btnMusic.dataset.on === '0') { btnMusic.dataset.on = '1'; btnMusic.textContent = '♪'; MJSound.unlock(); MJSound.bgmStart(); }
+    else { btnMusic.dataset.on = '0'; btnMusic.textContent = '×'; MJSound.bgmStop(); }
   });
 
   // ---------- lobby FX: falling gold coins (canvas) ----------

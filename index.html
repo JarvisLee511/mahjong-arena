@@ -8,7 +8,8 @@
 <title>該死的賭徒們 · Damn Gamblers</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&family=Ma+Shan+Zheng&family=Zhi+Mang+Xing&family=Bebas+Neue&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=28">
+<link rel="stylesheet" href="css/style.css?v=30">
+<link rel="stylesheet" href="css/table.css?v=4">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="manifest" href="manifest.json">
 </head>
@@ -23,7 +24,7 @@
 
 <!-- ============ LOBBY ============ -->
 <div id="lobby">
-  <button class="icon-btn" id="btnMusic" data-on="1" title="音樂" style="position:absolute;top:14px;right:14px;z-index:3">🎵</button>
+  <button class="icon-btn" id="btnMusic" data-on="1" title="音樂" style="position:absolute;top:14px;right:14px;z-index:3">♪</button>
   <div class="noir-spot"></div>
   <div class="noir-suits" aria-hidden="true">♠ ♥ ♦ ♣</div>
   <canvas class="coin-canvas" id="coinCanvas" aria-hidden="true"></canvas>
@@ -88,9 +89,9 @@
       <button class="icon-btn" id="btnLeave" title="離開">✕</button>
       <span class="pill" id="selfInfo"></span>
       <span class="pill" id="pillCode" style="display:none"></span>
-      <button class="icon-btn" id="btnSound" title="音效">🔊</button>
-      <button class="icon-btn" id="btnAuto" title="託管(自動摸打)">⏩</button>
-      <button class="icon-btn" id="btnEmote" title="喊話">💬</button>
+      <button class="icon-btn" id="btnSound" title="音效">♪</button>
+      <button class="icon-btn" id="btnAuto" title="託管(自動摸打)">»</button>
+      <button class="icon-btn" id="btnEmote" title="喊話">…</button>
     </div>
     <div id="emotePanel"></div>
 
@@ -103,20 +104,20 @@
       <div class="mwall bottom" id="wallB"></div>
       <div class="mwall left" id="wallL"></div>
       <div class="mwall right" id="wallR"></div>
+      <div class="wallpile" id="wallpile">
+        <div class="rw" id="roundWind">東風圈</div>
+        <div class="wall" id="wallCount">64<small> 張</small></div>
+        <div class="dice" id="dice"></div>
+      </div>
       <div class="pond" id="pond"></div>
-    </div>
-
-    <!-- 圈風/剩張/骰子:固定在手機畫面最右上角 -->
-    <div class="wallpile" id="wallpile">
-      <div class="rw" id="roundWind">東風圈</div>
-      <div class="wall" id="wallCount">64<small> 張</small></div>
-      <div class="dice" id="dice"></div>
     </div>
 
     <div class="self">
       <div class="tenpai-bar" id="tenpaiBar"></div>
-      <div class="self-melds" id="myMelds"></div>
-      <div class="hand" id="myHand"></div>
+      <div class="player-rack">
+        <div class="self-melds" id="myMelds"></div>
+        <div class="hand" id="myHand"></div>
+      </div>
       <div class="actions" id="actions"></div>
     </div>
     <div class="selfbar" id="selfBar"></div>
@@ -143,12 +144,16 @@
 /* 明星3缺一式「手牌驅動」尺寸:手牌整排撐滿螢幕寬(17 張),牌越大越好但不溢出。
    算出單張牌寬高寫進 --tile-w/--tile-h,牌桌所有牌(手牌/副露/牌河/牌背)都由它衍生。 */
 (function () {
-  var N = 17;                 // 16 張 + 摸的 1 張
-  var RATIO = 1.4;            // 牌高/牌寬(真麻將直立比例)
+  var N = 17.6;               // 16 張 + 摸牌 + 摸牌間隔
+  var RATIO = 1.72;           // 牌高/牌寬
   function fit() {
     var vw = window.innerWidth, vh = window.innerHeight;
-    var wByWidth = (vw - 12) / N;          // 撐滿寬度
-    var h = Math.min(wByWidth * RATIO, vh * 0.215, 112);  // 但不超過螢幕高 21.5% / 上限 112
+    var css = getComputedStyle(document.documentElement);
+    var safeLeft = parseFloat(css.getPropertyValue('--safe-left')) || 0;
+    var safeRight = parseFloat(css.getPropertyValue('--safe-right')) || 0;
+    var usableWidth = Math.min((vw - safeLeft - safeRight) * 0.9, 1120);
+    var wByWidth = usableWidth / N;
+    var h = Math.min(wByWidth * RATIO, vh * 0.18, 108);
     var w = h / RATIO;
     document.documentElement.style.setProperty('--tile-w', w.toFixed(2) + 'px');
     document.documentElement.style.setProperty('--tile-h', h.toFixed(2) + 'px');
@@ -160,11 +165,11 @@
 </script>
 <script src="js/tiles-art.js?v=28"></script>
 <script src="js/engine.js?v=28"></script>
-<script src="js/game.js?v=28"></script>
+<script src="js/game.js?v=29"></script>
 <script src="js/ai.js?v=28"></script>
 <script src="js/sound.js?v=28"></script>
-<script src="js/ui.js?v=28"></script>
-<script src="js/net.js?v=28"></script>
-<script src="js/online.js?v=28"></script>
+<script src="js/ui.js?v=32"></script>
+<script src="js/net.js?v=29"></script>
+<script src="js/online.js?v=29"></script>
 </body>
 </html>

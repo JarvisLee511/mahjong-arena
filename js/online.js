@@ -11,6 +11,8 @@
   const el = (t, c, x) => { const e = document.createElement(t); if (c) e.className = c; if (x != null) e.textContent = x; return e; };
   const NAMES_AI = ['—', '阿明', '秀蓮', '土豆伯'];
   const CLAIM_TIMEOUT = 9000;   // auto-pass a slow human claimer
+  const ACT_TIMEOUT = 20000;    // remote fallback prevents a disconnected seat freezing the hand
+  const SWAP_TIMEOUT = 15000;
 
   let mode = null;              // 'host' | 'guest'
   let G = null;
@@ -112,6 +114,10 @@
     const v = {
       mySeat: forSeat, phase: G.phase, turn: G.turn, dealerIndex: snap.dealerIndex,
       roundWind, wall: snap.wall, streak, lastDiscard: snap.lastDiscard,
+      wallStart: snap.wallStart,
+      wallDrawnFront: snap.wallDrawnFront,
+      wallDrawnBack: snap.wallDrawnBack,
+      furiten: G.furiten[forSeat],
       players: [0, 1, 2, 3].map((p) => ({
         seat: p, name: nameOf(p), ai: isAI(p), score: scores[p],
         handCount: G.players[p].hand.length, melds: G.players[p].melds, flowers: G.players[p].flowers,
@@ -120,7 +126,9 @@
       myHand: G.players[forSeat].hand.slice(),
       myActions: (G.phase === 'act' && G.turn === forSeat) ? G.actActions(forSeat) : null,
       myDrawn: (G.phase === 'act' && G.turn === forSeat) ? G.players[forSeat]._drawn : null,
-      myClaims: (G.phase === 'claim' && G.pendingClaims && G.pendingClaims.options[forSeat]) || null,
+      myClaims: (G.phase === 'claim' && G.pendingClaims && G.pendingClaims.options[forSeat] &&
+        !G.pendingClaims.declared[forSeat]) ? G.pendingClaims.options[forSeat] : null,
+      claimSubmitted: !!(G.phase === 'claim' && G.pendingClaims && G.pendingClaims.declared[forSeat]),
       claimTile: (G.phase === 'claim' && G.pendingClaims) ? G.pendingClaims.tile : null,
       waits: (function () {
         if (G.phase !== 'act' || G.turn !== forSeat) return null;
@@ -174,6 +182,7 @@
     const mb = $('#btnMusic'); if (!mb || mb.dataset.on !== '0') MJSound.bgmStart('game');
     hideRoom();
     $('#lobby').style.display = 'none'; $('#app').classList.add('on');
+    $('#btnAuto').style.display = 'none';
     scores = [0, 0, 0, 0]; dealerIndex = 0; streak = 0; roundWind = 'z1'; dealerPasses = 0;
     sessionStats = [0, 1, 2, 3].map(() => ({ hu: 0, tsumo: 0, dealIn: 0 }));
     window.MJNet.send('dice', { name: nameOf(dealerIndex) });   // ⑧ 擲骰決莊(客人同步)
@@ -210,14 +219,26 @@
   }
 
   function hostAdvance() {
-    pushViews();
+    clearTimeout(claimTimer);
     if (!G) return;
     if (G.phase === 'over') return hostFinish();
+    pushViews();
     if (G.phase === 'swap') return hostSwap();
     if (G.phase === 'act') {
       const seat = G.turn;
       if (isAI(seat)) setTimeout(() => hostAI(seat), aiDelay);
-      // else wait: local host (seat 0) uses buttons; remote guest sends 'act'
+      else if (seat !== 0) {
+        claimTimer = setTimeout(() => {
+          if (!G || G.phase !== 'act' || G.turn !== seat) return;
+          try {
+            const action = window.MJAI.act(G, seat);
+            if (action.type === 'discard') MJSound.fx('discard');
+            G.applyAct(seat, action);
+          } catch (e) { return; }
+          hostAdvance();
+        }, ACT_TIMEOUT);
+      }
+      // The local host has no forced timer; remote seats fall back to AI.
     } else if (G.phase === 'claim') hostClaims();
   }
 
@@ -232,7 +253,7 @@
       const before = G.swapRound;
       for (let p = 0; p < 4; p++) if (!G.swapReady(p)) G.selectSwap(p, aiPickSwap(p));
       if (G.phase !== 'swap' || G.swapRound !== before) hostAdvance();
-    }, 15000);
+    }, SWAP_TIMEOUT);
   }
 
   function swapFor(seat, tiles) {
@@ -241,7 +262,7 @@
     G.selectSwap(seat, tiles);
     clearTimeout(claimTimer);
     if (G.phase !== 'swap' || G.swapRound !== before) hostAdvance();  // round resolved → drive on
-    else pushViews();                                                // still collecting
+    else hostSwap();                                                  // still collecting → re-arm timeout
   }
 
   function hostAI(seat) {
@@ -271,21 +292,31 @@
     clearTimeout(claimTimer);
     claimTimer = setTimeout(() => {
       if (!G || G.phase !== 'claim') return;
-      Object.keys(G.pendingClaims.options).map(Number).forEach((p) => {
+      const pendingSeats = Object.keys(G.pendingClaims.options).map(Number);
+      for (const p of pendingSeats) {
+        if (!G || G.phase !== 'claim' || !G.pendingClaims) break;
         if (!G.pendingClaims.declared[p]) G.declareClaim(p, { type: 'pass' });
-      });
+      }
       if (G.phase !== 'claim') hostAdvance();
     }, CLAIM_TIMEOUT);
   }
 
   function declareFor(seat, action) {
     if (!G || G.phase !== 'claim' || !G.pendingClaims.options[seat]) return;
-    G.declareClaim(seat, action);
+    try {
+      G.declareClaim(seat, action);
+    } catch (e) {
+      pushViews();
+      return;
+    }
     if (G.phase !== 'claim') { clearTimeout(claimTimer); hostAdvance(); }
     else pushViews();
   }
 
   function hostFinish() {
+    if (!G || G._finishHandled) return;
+    G._finishHandled = true;
+    clearTimeout(claimTimer);
     window.MJView.clearSelection();
     const r = G.result;
     if (r.type === 'draw') { MJSound.fx('lose'); MJSound.voice('draw'); window.MJNet.send('flash', { text: '流局', fx: 'lose', voice: 'draw' }); streak++; }
@@ -365,7 +396,7 @@
     if (type === 'welcome') { mySeat = payload.seat; joinStatus = 'seated'; clearTimeout(joinTimer); window._guestRoster = payload.roster; renderRoom(); }
     else if (type === 'roster') { window._guestRoster = payload.roster; renderRoom(); }
     else if (type === 'full') { alert('房間已滿或已開打 🙇'); location.reload(); }
-    else if (type === 'begin') { MJSound.bgmStop(); if (window.__lobbyFX) window.__lobbyFX.stop(); const mb = $('#btnMusic'); if (!mb || mb.dataset.on !== '0') MJSound.bgmStart('game'); hideRoom(); $('#lobby').style.display = 'none'; $('#app').classList.add('on'); }
+    else if (type === 'begin') { MJSound.bgmStop(); if (window.__lobbyFX) window.__lobbyFX.stop(); const mb = $('#btnMusic'); if (!mb || mb.dataset.on !== '0') MJSound.bgmStart('game'); hideRoom(); $('#lobby').style.display = 'none'; $('#app').classList.add('on'); $('#btnAuto').style.display = 'none'; }
     else if (type === 'view') {
       const v = payload; v.mySeat = mySeat;
       window.MJView.hideResult();
@@ -382,6 +413,7 @@
       if (payload.voice) MJSound.voice(payload.voice);
       if (payload.tile) MJSound.tile(payload.tile, payload.tileName);
     }
+    else if (type === 'host-rejoin') { window.MJNet.send('rejoin', {}); }
     else if (type === 'emote') { onEmote(payload); }
     else if (type === 'dice') { window.MJView.rollDealer(payload.name, () => {}); }
   }

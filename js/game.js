@@ -50,6 +50,8 @@
       this.phase = 'act';
       this.lastDiscard = null;      // { tile, from }
       this.pendingClaims = null;
+      this.pendingAddKong = null;
+      this.mustDiscardAfterClaim = false;
       this.result = null;
       this.log = [];
       this.firstGoAround = true;    // for 天/地/人胡
@@ -57,6 +59,11 @@
       this.furiten = [false, false, false, false];   // 過水:放棄可胡後不能再放槍胡,到自己摸牌才解
       this.ready = [null, null, null, null];          // 天聽/地聽:'tian'|'di'
       this._deal();
+      // The visible wall starts after the initial deal. From here on the UI can
+      // remove normal draws from one end and replacement draws from the other.
+      this.wallStartFront = this.front;
+      this.wallStartBack = this.wall.length - 1 - this.back;
+      this.wallStart = this.wallCount();
     }
 
     // draw from front (normal) or back (replacement)
@@ -151,6 +158,7 @@
       }
       pl.hand.push(t);
       pl._drawn = t;
+      this.mustDiscardAfterClaim = false;
       this.furiten[this.turn] = false;   // 自己摸牌 → 解除過水
       sortHand(pl.hand);
       this.phase = 'act';
@@ -167,6 +175,7 @@
       const acts = [];
       // discard any tile
       for (const t of new Set(pl.hand)) acts.push({ type: 'discard', tile: t });
+      if (this.mustDiscardAfterClaim) return acts;
       // self win (自摸)
       if (MJ.canWin(pl.hand, pl.melds.length)) acts.push({ type: 'tsumo' });
       // 暗槓 (4 concealed identical)
@@ -184,12 +193,21 @@
 
     applyAct(p, action) {
       if (this.phase !== 'act' || p !== this.turn) throw new Error('not your turn');
+      if (!action || typeof action.type !== 'string') throw new Error('invalid action');
+      const allowed = this.actActions(p).find((candidate) => (
+        candidate.type === action.type &&
+        (candidate.tile == null || candidate.tile === action.tile)
+      ));
+      if (!allowed) throw new Error('illegal action');
+      action = allowed;
       const pl = this.players[p];
       if (action.type === 'discard') {
         const idx = pl.hand.indexOf(action.tile);
         if (idx < 0) throw new Error('no such tile');
+        if (this.ready[p] && pl._drawn && action.tile !== pl._drawn) this.ready[p] = null;
         pl.hand.splice(idx, 1);
         pl._drawn = null;
+        this.mustDiscardAfterClaim = false;
         this.lastDiscard = { tile: action.tile, from: p };
         pl.discards.push(action.tile);
         this.kongPending = false;
@@ -207,6 +225,7 @@
         return;
       }
       if (action.type === 'ankong') {
+        this.ready[p] = null;
         for (let k = 0; k < 4; k++) pl.hand.splice(pl.hand.indexOf(action.tile), 1);
         pl.melds.push({ type: 'kong', subtype: 'an', tiles: Array(4).fill(action.tile), concealed: true });
         this.kongPending = true;
@@ -215,10 +234,10 @@
         return;
       }
       if (action.type === 'addkong') {
+        this.ready[p] = null;
         // robbable: give others a 搶槓 chance before completing
         const m = pl.melds.find((x) => x.type === 'pung' && x.tiles[0] === action.tile);
-        pl.hand.splice(pl.hand.indexOf(action.tile), 1);
-        m.type = 'kong'; m.subtype = 'add'; m.tiles = Array(4).fill(action.tile); m.concealed = false;
+        this.pendingAddKong = { player: p, tile: action.tile, meld: m };
         this.lastDiscard = { tile: action.tile, from: p, robKong: true };
         this._openClaims(p, action.tile, true);
         return;
@@ -264,10 +283,27 @@
     // each eligible player declares a choice (or {type:'pass'}); when all in, resolve
     declareClaim(p, action) {
       if (this.phase !== 'claim') throw new Error('no claim open');
-      if (!this.pendingClaims.options[p]) return; // not eligible
-      this.pendingClaims.declared[p] = action || { type: 'pass' };
+      const options = this.pendingClaims.options[p];
+      if (!options || this.pendingClaims.declared[p]) return false;
+      const requested = action || { type: 'pass' };
+      let choice = null;
+      if (requested.type === 'pass') {
+        choice = { type: 'pass' };
+      } else {
+        choice = options.find((option) => (
+          option.type === requested.type &&
+          (option.type !== 'chow' || (
+            Array.isArray(requested.tiles) &&
+            option.tiles.length === requested.tiles.length &&
+            option.tiles.every((tile, index) => tile === requested.tiles[index])
+          ))
+        ));
+      }
+      if (!choice) throw new Error('illegal claim');
+      this.pendingClaims.declared[p] = choice;
       const eligible = Object.keys(this.pendingClaims.options);
       if (eligible.every((k) => this.pendingClaims.declared[k])) this._resolveClaims();
+      return true;
     }
 
     _resolveClaims() {
@@ -283,6 +319,15 @@
         .sort((a, b) => (((a - from) + 4) & 3) - (((b - from) + 4) & 3));
       if (winners.length) {
         this.pendingClaims = null;
+        if (pc.robKong) {
+          const robbed = this.pendingAddKong;
+          if (robbed) {
+            const robbedPlayer = this.players[robbed.player];
+            robbedPlayer.hand.splice(robbedPlayer.hand.indexOf(robbed.tile), 1);
+            robbedPlayer.discards.push(robbed.tile);
+          }
+          this.pendingAddKong = null;
+        }
         const list = this.allowMultiHu ? winners : [winners[0]];
         this._win(list, false, tile, from, pc.robKong);
         return;
@@ -292,12 +337,14 @@
         this._afterKongNoRob(from);
         return;
       }
-      const kong = Object.keys(decl).find((k) => decl[k].type === 'kong');
-      const pung = Object.keys(decl).find((k) => decl[k].type === 'pung');
+      const sameTileClaim = Object.keys(decl)
+        .filter((k) => decl[k].type === 'kong' || decl[k].type === 'pung')
+        .map(Number)
+        .sort((a, b) => (((a - from) + 4) & 3) - (((b - from) + 4) & 3))[0];
       const chow = Object.keys(decl).find((k) => decl[k].type === 'chow');
       this.pendingClaims = null;
-      if (kong != null) return this._doKongClaim(+kong, tile, from);
-      if (pung != null) return this._doPung(+pung, tile, from);
+      if (sameTileClaim != null && decl[sameTileClaim].type === 'kong') return this._doKongClaim(sameTileClaim, tile, from);
+      if (sameTileClaim != null) return this._doPung(sameTileClaim, tile, from);
       if (chow != null) return this._doChow(+chow, decl[chow].tiles, tile, from);
       this._advanceAfterDiscard(from);
     }
@@ -305,7 +352,10 @@
     _removeFromHand(pl, tile, n) { for (let k = 0; k < n; k++) pl.hand.splice(pl.hand.indexOf(tile), 1); }
 
     // the claimed tile leaves the discarder's river and becomes part of the meld
-    _takeDiscard(from) { this.players[from].discards.pop(); }
+    _takeDiscard(from) {
+      this.players[from].discards.pop();
+      this.lastDiscard = null;
+    }
 
     _doPung(p, tile, from) {
       const pl = this.players[p];
@@ -313,6 +363,9 @@
       this._removeFromHand(pl, tile, 2);
       pl.melds.push({ type: 'pung', tiles: [tile, tile, tile], concealed: false, from });
       this.turn = p; this.phase = 'act';
+      pl._drawn = null;
+      this.mustDiscardAfterClaim = true;
+      this.ready[p] = null;
       this.firstGoAround = false;
       this._emit('pung', { player: p, from, tile });
       // pung → must discard (no draw)
@@ -324,6 +377,7 @@
       pl.melds.push({ type: 'kong', subtype: 'big', tiles: Array(4).fill(tile), concealed: false, from });
       this.turn = p; this.kongPending = true;
       this.firstGoAround = false;
+      this.ready[p] = null;
       this._emit('kong', { player: p, from, tile, subtype: 'big' });
       this._drawForTurn(true); // draw replacement then act
     }
@@ -333,10 +387,25 @@
       for (const t of seq) if (t !== tile) this._removeFromHand(pl, t, 1);
       pl.melds.push({ type: 'chow', tiles: seq.slice().sort(), concealed: false, from });
       this.turn = p; this.phase = 'act';
+      pl._drawn = null;
+      this.mustDiscardAfterClaim = true;
+      this.ready[p] = null;
       this.firstGoAround = false;
       this._emit('chow', { player: p, from, tiles: seq });
     }
     _afterKongNoRob(p) {
+      if (this.pendingAddKong && this.pendingAddKong.player === p) {
+        const pending = this.pendingAddKong;
+        const player = this.players[p];
+        player.hand.splice(player.hand.indexOf(pending.tile), 1);
+        pending.meld.type = 'kong';
+        pending.meld.subtype = 'add';
+        pending.meld.tiles = Array(4).fill(pending.tile);
+        pending.meld.concealed = false;
+        this.pendingAddKong = null;
+        this._emit('kong', { player: p, tile: pending.tile, subtype: 'add' });
+      }
+      this.lastDiscard = null;
       this.turn = p; this.kongPending = true;
       this._drawForTurn(true);
     }
@@ -398,6 +467,9 @@
         phase: this.phase, turn: this.turn, dealerIndex: this.dealerIndex,
         swapRound: this.swapRound,
         roundWind: this.roundWind, wall: this.wallCount(),
+        wallStart: this.wallStart,
+        wallDrawnFront: Math.max(0, this.front - this.wallStartFront),
+        wallDrawnBack: Math.max(0, (this.wall.length - 1 - this.back) - this.wallStartBack),
         lastDiscard: this.lastDiscard, result: this.result,
         players: this.players.map((p) => ({
           seat: p.seat, melds: p.melds, flowers: p.flowers,
