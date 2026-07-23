@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240">
+  <defs>
+    <linearGradient id="a5bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f4a72b"/>
+      <stop offset="1" stop-color="#d97e14"/>
+    </linearGradient>
+  </defs>
+  <rect width="240" height="240" fill="url(#a5bg)"/>
+  <!-- shirt shoulders -->
+  <path d="M50 240 C52 186 86 166 120 166 C154 166 188 186 190 240 Z" fill="#3f8f7a"/>
+  <path d="M120 166 C110 176 108 210 110 240 L130 240 C132 210 130 176 120 166 Z" fill="#2f6f5e"/>
+  <circle cx="120" cy="196" r="4" fill="#e7edf3"/>
+  <circle cx="120" cy="214" r="4" fill="#e7edf3"/>
+  <!-- neck -->
+  <path d="M104 150 h32 v12 c0 12 -32 12 -32 0 Z" fill="#e6ac74"/>
+  <!-- head round -->
+  <ellipse cx="120" cy="102" rx="48" ry="52" fill="#f2be86"/>
+  <!-- round cheeks -->
+  <circle cx="90" cy="120" r="13" fill="#ef9a83" opacity="0.5"/>
+  <circle cx="150" cy="120" r="13" fill="#ef9a83" opacity="0.5"/>
+  <!-- ears -->
+  <circle cx="72" cy="106" r="10" fill="#f2be86"/>
+  <circle cx="168" cy="106" r="10" fill="#f2be86"/>
+  <!-- balding: bare top, grey sides -->
+  <path d="M76 108 C70 92 70 76 78 66 C74 84 78 96 82 104 C80 92 84 78 90 72 C86 88 90 100 92 106 Z" fill="#c9cdd2"/>
+  <path d="M164 108 C170 92 170 76 162 66 C166 84 162 96 158 104 C160 92 156 78 150 72 C154 88 150 100 148 106 Z" fill="#c9cdd2"/>
+  <path d="M76 108 C74 96 74 84 80 76 C80 92 82 100 84 106 Z" fill="#b3b8be"/>
+  <path d="M164 108 C166 96 166 84 160 76 C160 92 158 100 156 106 Z" fill="#b3b8be"/>
+  <!-- shine on bald head -->
+  <path d="M108 62 q14 -8 28 2 q-14 -2 -28 -2 Z" fill="#f8d3a4" opacity="0.7"/>
+  <!-- eyebrows raised jolly -->
+  <path d="M90 92 q11 -6 21 -1" stroke="#9a9ea3" stroke-width="4" fill="none" stroke-linecap="round"/>
+  <path d="M129 91 q11 -5 21 1" stroke="#9a9ea3" stroke-width="4" fill="none" stroke-linecap="round"/>
+  <!-- happy squint eyes -->
+  <path d="M92 104 q10 -8 20 0" stroke="#4a3320" stroke-width="4" fill="none" stroke-linecap="round"/>
+  <path d="M128 104 q10 -8 20 0" stroke="#4a3320" stroke-width="4" fill="none" stroke-linecap="round"/>
+  <!-- nose big round -->
+  <ellipse cx="120" cy="118" rx="8" ry="7" fill="#eaad6f"/>
+  <circle cx="118" cy="116" r="2.4" fill="#f6cf9a" opacity="0.8"/>
+  <!-- big grin -->
+  <path d="M92 130 q28 30 56 0 q-28 12 -56 0 Z" fill="#7a2f28"/>
+  <path d="M96 130 q24 8 48 0 q-24 -6 -48 0 Z" fill="#fff"/>
+  <path d="M92 130 q28 26 56 0" stroke="#5c231d" stroke-width="3" fill="none" stroke-linecap="round"/>
+</svg>

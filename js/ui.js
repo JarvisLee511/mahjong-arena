@@ -62,6 +62,7 @@
     renderPond(v);
     renderActions(v, handlers);
     renderTenpai(v);
+    renderSelfBar(v);
   }
 
   // #5 聽牌提示列:顯示「聽」+ 聽的牌漂在旁邊
@@ -81,15 +82,15 @@
     const wrap = $('#' + SEAT_EL[pos]); wrap.innerHTML = '';
     const sp = v.players[p];
     const av = el('div', 'avatar' + (v.turn === p ? ' turn' : '') + (p === v.dealerIndex ? ' dealer' : ''));
+    const face = el('div', 'face');
+    face.style.backgroundImage = `url('assets/avatars/a${(p % 6) + 1}.svg?v=25')`;
+    av.appendChild(face);
     const wind = window.MJ.SEAT_WIND[((p - v.dealerIndex) + 4) & 3];
     av.appendChild(el('div', 'wind', WIND[wind]));
     av.appendChild(el('div', 'nm', sp.name + (sp.ai ? ' 🤖' : '')));
     const sc = el('div', 'sc' + (sp.score > 0 ? ' pos' : sp.score < 0 ? ' neg' : ''), (sp.score >= 0 ? '+' : '') + sp.score);
     av.appendChild(sc);
     if (p === v.dealerIndex && v.streak > 0) av.appendChild(el('div', 'streak', '連' + v.streak));
-    if (sp.flowers && sp.flowers.length) {
-      const fl = el('div', 'flowers'); sp.flowers.forEach((f) => fl.appendChild(tileEl(f))); av.appendChild(fl);
-    }
     wrap.appendChild(av);
     const backs = el('div', 'backs');
     for (let i = 0; i < sp.handCount; i++) backs.appendChild(backEl());
@@ -97,6 +98,23 @@
     if (sp.melds && sp.melds.length) {
       const mm = el('div', 'opp-melds'); sp.melds.forEach((m) => mm.appendChild(meldGroup(m))); wrap.appendChild(mm);
     }
+    // 補花:縮小成一小排放在旁邊(不擠壓牌背)
+    if (sp.flowers && sp.flowers.length) {
+      const fl = el('div', 'flowers opp-flowers'); sp.flowers.forEach((f) => fl.appendChild(tileEl(f))); wrap.appendChild(fl);
+    }
+  }
+
+  // 明星3缺一式底部狀態列:風位莊 · 圈數 · 金幣(分數)
+  function renderSelfBar(v) {
+    const bar = $('#selfBar'); if (!bar) return;
+    bar.innerHTML = '';
+    const meWind = window.MJ.SEAT_WIND[((v.mySeat - v.dealerIndex) + 4) & 3];
+    const me = v.players[v.mySeat];
+    const dealer = v.mySeat === v.dealerIndex;
+    bar.appendChild(el('span', 'sb-wind' + (dealer ? ' dealer' : ''), WIND[meWind] + (dealer ? ' 莊' : '')));
+    const roundTxt = v.phase === 'swap' ? '換三張' : (WIND[v.roundWind] + '風圈' + (v.streak ? ' · 連' + v.streak : ''));
+    bar.appendChild(el('span', 'sb-info', roundTxt));
+    bar.appendChild(el('span', 'sb-coin', '🪙 ' + (me.score >= 0 ? '+' : '') + me.score));
   }
 
   function renderSelf(v, handlers) {

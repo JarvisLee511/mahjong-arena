@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240">
+  <defs>
+    <linearGradient id="a3bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#7b3fc4"/>
+      <stop offset="1" stop-color="#57279a"/>
+    </linearGradient>
+  </defs>
+  <rect width="240" height="240" fill="url(#a3bg)"/>
+  <!-- shoulders top -->
+  <path d="M54 240 C56 188 88 168 120 168 C152 168 184 188 186 240 Z" fill="#ffd23f"/>
+  <path d="M120 168 l-22 12 22 24 22 -24 Z" fill="#ffffff"/>
+  <!-- colorful collar -->
+  <path d="M98 180 l22 24 -30 20 -22 -34 Z" fill="#39c6a0"/>
+  <path d="M142 180 l-22 24 30 20 22 -34 Z" fill="#ff6f91"/>
+  <!-- neck -->
+  <path d="M106 150 h28 v14 c0 12 -28 12 -28 0 Z" fill="#f0b98c"/>
+  <path d="M106 150 h28 v6 c-9 7 -19 7 -28 0 Z" fill="#dca277"/>
+  <!-- head -->
+  <ellipse cx="120" cy="100" rx="46" ry="52" fill="#fbd0a6"/>
+  <!-- cheeks -->
+  <circle cx="94" cy="116" r="8" fill="#ff9d8f" opacity="0.55"/>
+  <circle cx="146" cy="116" r="8" fill="#ff9d8f" opacity="0.55"/>
+  <!-- ears -->
+  <circle cx="74" cy="104" r="9" fill="#fbd0a6"/>
+  <circle cx="166" cy="104" r="9" fill="#fbd0a6"/>
+  <!-- brown bob hair -->
+  <path d="M70 128 C58 96 62 44 120 42 C178 44 182 96 170 128 C168 108 164 96 160 90 L160 128 L150 128 C150 108 148 84 120 80 C92 84 90 108 90 128 L80 128 L80 90 C76 96 72 108 70 128 Z" fill="#7a4a2b"/>
+  <path d="M120 42 C178 44 182 96 170 128 C168 108 164 96 160 90 L160 128 L150 128 C150 108 148 84 120 80 Z" fill="#6a3d21"/>
+  <!-- bangs -->
+  <path d="M80 78 C92 62 148 62 160 78 C150 70 130 68 120 68 C110 68 90 70 80 78 Z" fill="#5c3319"/>
+  <!-- eyebrows -->
+  <path d="M92 90 q10 -4 20 0" stroke="#5c3319" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <path d="M128 90 q10 -4 20 0" stroke="#5c3319" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <!-- eyes cheerful -->
+  <ellipse cx="102" cy="102" rx="7.5" ry="8.5" fill="#fff"/>
+  <ellipse cx="138" cy="102" rx="7.5" ry="8.5" fill="#fff"/>
+  <circle cx="103" cy="103" r="4.6" fill="#4a2f22"/>
+  <circle cx="139" cy="103" r="4.6" fill="#4a2f22"/>
+  <circle cx="104.8" cy="101.2" r="1.5" fill="#fff"/>
+  <circle cx="140.8" cy="101.2" r="1.5" fill="#fff"/>
+  <!-- nose -->
+  <path d="M120 108 q3 7 -1 10" stroke="#e0a878" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+  <!-- cheerful smile -->
+  <path d="M100 126 q20 20 40 0" stroke="#c0455f" stroke-width="4" fill="none" stroke-linecap="round"/>
+  <path d="M104 128 q16 14 32 0 q-16 5 -32 0 Z" fill="#fff"/>
+</svg>

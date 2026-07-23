@@ -268,10 +268,23 @@ body {
 /* 明星3缺一式滿版牌桌:不留黑邊,手牌撐滿整個螢幕寬。
    牌尺寸由 index.html 依螢幕寬算出的 --tile-w/--tile-h 驅動,全部牌都由它衍生。 */
 #app { position: fixed; inset: 0; display: none; overflow: hidden;
-  --tile-w: 40px; --tile-h: 56px;
-  /* 明星3缺一風:溫潤木框 + 深藍綠氈桌 + 廳堂暖光背景 */
+  --tile-w: 40px; --tile-h: 56px; --sb-h: clamp(22px, 4.2vh, 30px);
+  /* 明星3缺一風:海景天空背景(原創 CSS 場景)*/
   background:
-    radial-gradient(120% 80% at 50% 0%, #3a2a1c 0%, #241812 40%, #140c09 100%);
+    /* 太陽暖光 */
+    radial-gradient(60% 45% at 78% 12%, rgba(255,225,150,.5), transparent 55%),
+    /* 海面 */
+    linear-gradient(180deg, transparent 0 52%, #1b6f8c 52%, #0e4a63 72%, #0a3348 100%),
+    /* 天空 */
+    linear-gradient(180deg, #2a4d7a 0%, #4d79a8 30%, #a9c6d8 48%, #f0d9b0 52%);
+}
+/* 遠景棕櫚剪影 + 地平線微光 */
+#app::before {
+  content: ""; position: absolute; left: 0; right: 0; top: 0; height: 52%;
+  background:
+    radial-gradient(38% 60% at 12% 100%, rgba(10,30,20,.55) 0 40%, transparent 60%),
+    radial-gradient(30% 55% at 90% 100%, rgba(10,30,20,.5) 0 42%, transparent 62%);
+  pointer-events: none; z-index: 0;
 }
 #app.on { display: block; }
 .table {
@@ -292,31 +305,58 @@ body {
 
 /* opponent panels */
 .opp {
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
-  position: relative;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  position: relative; padding: 11px 9px 0;
 }
+.seat-top { justify-content: flex-start; }
+/* 上家/下家:頭像貼近頂角,牌背往下延伸 */
+.seat-left, .seat-right { justify-content: flex-start; }
+/* 明星3缺一式:大圓形角色頭像 */
 .avatar {
-  --c: var(--neon-cyan);
-  display: flex; flex-direction: column; align-items: center; gap: 2px;
-  padding: 5px 8px; border-radius: 12px; background: rgba(12,15,22,.7);
-  border: 1px solid rgba(255,255,255,.08); min-width: 62px;
+  position: relative;
+  --sz: clamp(52px, 8.6vw, 80px);
+  width: var(--sz); height: var(--sz); flex: 0 0 auto;
 }
-.avatar .nm { font-size: 12px; font-weight: 800; white-space: nowrap; }
-.avatar .sc { font-size: 12px; color: #cfd8d2; font-weight: 800; }
-.avatar .sc.pos { color: #47d18a; }
-.avatar .sc.neg { color: #ff6b6b; }
+.avatar .face {
+  position: absolute; inset: 0; border-radius: 50%;
+  background-position: center top; background-size: cover; background-repeat: no-repeat;
+  background-color: #24303a;
+  border: 2.5px solid #dcbd7e;                         /* 金色頭像框 */
+  box-shadow: 0 3px 9px rgba(0,0,0,.55), inset 0 0 0 1px rgba(0,0,0,.35);
+}
+.avatar.turn .face {                                   /* 輪到他:金光框 */
+  border-color: var(--neon-gold);
+  box-shadow: 0 0 0 3px rgba(255,210,76,.55), 0 0 18px rgba(255,210,76,.65), 0 3px 9px rgba(0,0,0,.5);
+}
+.avatar .nm {
+  position: absolute; bottom: -4px; left: 50%; transform: translateX(-50%);
+  font-size: clamp(9px, 1.5vw, 12px); font-weight: 800; white-space: nowrap; z-index: 3;
+  background: rgba(8,10,14,.85); color: #fff; padding: 1px 8px; border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.14); max-width: 150%;
+}
+.avatar.dealer .nm::after { content: " 莊"; color: #ffcf5a; }
+.avatar .sc {
+  position: absolute; top: -7px; right: -8px; z-index: 3; font-size: 10px; font-weight: 900;
+  background: rgba(8,10,14,.88); border: 1px solid rgba(255,255,255,.16); border-radius: 999px;
+  padding: 1px 6px; color: #cfd8d2;
+}
+.avatar .sc.pos { color: #57e39a; }
+.avatar .sc.neg { color: #ff7a7a; }
+.avatar .wind {
+  position: absolute; top: -6px; left: -7px; z-index: 3;
+  width: clamp(18px, 2.9vw, 25px); height: clamp(18px, 2.9vw, 25px); border-radius: 50%;
+  display: grid; place-items: center; font-size: clamp(10px, 1.7vw, 14px); font-weight: 900;
+  background: var(--ink); border: 2px solid var(--neon-gold); color: var(--neon-gold);
+}
+.avatar.dealer .wind { background: var(--blood); border-color: var(--gold-lite); color: #fff; }
 .avatar .streak {
-  position: absolute; bottom: -7px; right: -6px; font-size: 10px; font-weight: 900; color: #fff;
+  position: absolute; bottom: 2px; right: -10px; z-index: 3; font-size: 10px; font-weight: 900; color: #fff;
   background: var(--blood); border: 1px solid var(--gold); border-radius: 999px; padding: 1px 5px;
 }
-#selfInfo { color: var(--neon-gold); font-weight: 800; }
-.avatar .wind {
-  position: absolute; top: -8px; left: -8px; width: 22px; height: 22px; border-radius: 50%;
-  display: grid; place-items: center; font-size: 12px; font-weight: 900;
-  background: var(--ink); border: 1.5px solid var(--neon-gold); color: var(--neon-gold);
-}
-.avatar.turn { border-color: var(--neon-gold); box-shadow: var(--glow-gold); }
-.avatar.dealer .nm::after { content: " 莊"; color: var(--neon-red); }
+#selfInfo { display: none; }   /* 改用底部狀態列 */
+/* 對手的補花:縮小成一小排放在旁邊,不擠壓手牌牌背 */
+.opp-flowers { display: flex; flex-wrap: wrap; gap: 1px; max-width: calc(var(--tile-w) * 2.2); justify-content: center; }
+.opp-flowers .tile { width: calc(var(--tile-w) * .34); height: calc(var(--tile-h) * .34); }
 
 /* concealed tile backs count for opponents */
 .backs { display: flex; gap: 1px 2px; flex-wrap: wrap; justify-content: center; max-width: 100%; }
@@ -328,13 +368,13 @@ body {
 /* 牌背:做出「兩層牌疊在一起」的立體感(頂面亮 + 疊層縫 + 側牆) */
 .tb {
   width: calc(var(--tile-w) * .38); height: calc(var(--tile-h) * .38); border-radius: 2px 2px 3px 3px; position: relative;
-  background: linear-gradient(180deg, #3aa06e 0 16%, #1c7a4d 16% 55%, #14663f 55% 100%);
-  border: 1px solid #0a3d24;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.25), 0 1px 1px rgba(0,0,0,.35);
+  background: linear-gradient(180deg, #4a9fe0 0 16%, #2f7fc4 16% 55%, #1f65a8 55% 100%);
+  border: 1px solid #123f66;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.32), 0 1px 1px rgba(0,0,0,.35);
 }
 .tb::after {   /* seam between the two stacked layers */
   content: ""; position: absolute; left: 1px; right: 1px; top: 55%; height: 1px;
-  background: rgba(0,0,0,.28); box-shadow: 0 1px 0 rgba(255,255,255,.12);
+  background: rgba(0,0,0,.28); box-shadow: 0 1px 0 rgba(255,255,255,.16);
 }
 /* opponent exposed melds (small) */
 /* 對手副露:縮小、同方向一直線排在手牌前方;上家/下家(兩側)整組轉 90° */
@@ -344,17 +384,18 @@ body {
 .seat-left .opp-melds, .seat-right .opp-melds { flex-direction: column; align-items: center; gap: 0; }
 .seat-left .opp-melds .meld-group, .seat-right .opp-melds .meld-group { transform: rotate(90deg); margin: 15px 0; }
 
-/* ---------- center pond(明星3缺一式:木框 + 藍綠氈桌)---------- */
+/* ---------- center pond(明星3缺一式:淺褐木邊 + 棗紅氈桌)---------- */
 .center {
-  position: relative; margin: 5px; border-radius: 30px;
+  position: relative; margin: 5px; border-radius: 34px; z-index: 1;
   background:
-    radial-gradient(72% 74% at 50% 40%, #18806f 0%, #0f5f54 56%, #093f39 100%);
+    radial-gradient(74% 76% at 50% 42%, #8a3a2f 0%, #6e2820 52%, #4e1a14 100%);
   box-shadow:
-    inset 0 0 48px rgba(0,0,0,.5),                 /* 桌面暗角 */
-    inset 0 0 0 4px rgba(212,175,55,.32),          /* 金色內圈 */
-    0 0 0 5px #6b4423,                              /* 木框 */
-    0 0 0 8px #3a2412,                              /* 木框暗邊 */
-    0 9px 24px rgba(0,0,0,.55);                     /* 桌子投影 */
+    inset 0 0 52px rgba(0,0,0,.5),                  /* 桌面暗角 */
+    inset 0 0 0 3px rgba(0,0,0,.28),                /* 氈面內緣 */
+    0 0 0 7px #caa877,                              /* 淺褐皮革桌邊 */
+    0 0 0 10px #8a6a44,                             /* 桌邊暗線 */
+    0 0 0 12px #4a3620,                             /* 最外木框 */
+    0 10px 26px rgba(0,0,0,.6);                     /* 桌子投影 */
   overflow: hidden;
 }
 .center::after { /* felt sheen(上方一抹柔光)*/
@@ -376,8 +417,8 @@ body {
 /* 牌山一墩 = 兩張疊高的牌背:頂面亮 + 疊層縫 + 底部陰影(立體) */
 .wseg {
   position: relative; width: 10px; height: 19px; border-radius: 1px 1px 2px 2px;
-  background: linear-gradient(180deg, #4bb37e 0 20%, #1f8351 20% 100%);
-  border: 1px solid #0a3d24; box-shadow: inset 0 -3px 3px rgba(0,0,0,.32);
+  background: linear-gradient(180deg, #4a9fe0 0 20%, #1f65a8 20% 100%);
+  border: 1px solid #123f66; box-shadow: inset 0 -3px 3px rgba(0,0,0,.32);
 }
 .wseg::after {   /* 兩層之間的疊縫 */
   content: ""; position: absolute; left: 0; right: 0; top: 58%; height: 1px;
@@ -395,12 +436,12 @@ body {
 .mwall.right  { right: 8px;  top: 50%; transform: translateY(-50%); flex-direction: column; }
 .mwall.left .wseg, .mwall.right .wseg {
   width: 19px; height: 10px; border-radius: 1px;
-  background: linear-gradient(90deg, #4bb37e 0 20%, #1f8351 20% 100%);
+  background: linear-gradient(90deg, #4a9fe0 0 20%, #1f65a8 20% 100%);
 }
 .mwall.left .wseg::after, .mwall.right .wseg::after {
   top: 0; bottom: 0; left: 58%; right: auto; width: 1px; height: auto;
 }
-.mwall.right .wseg { background: linear-gradient(270deg, #4bb37e 0 20%, #1f8351 20% 100%); }
+.mwall.right .wseg { background: linear-gradient(270deg, #4a9fe0 0 20%, #1f65a8 20% 100%); }
 .mwall.right .wseg::after { left: auto; right: 58%; }
 
 /* four discard rivers, positioned toward each seat */
@@ -408,7 +449,7 @@ body {
 /* neat discard rows, built row-by-row in JS (like 神來也 的棄牌區) */
 .river { position: absolute; display: flex; flex-direction: column; gap: 1px; }
 .river-row { display: flex; gap: 1px; }
-.river .tile { width: calc(var(--tile-w) * .6); height: calc(var(--tile-h) * .6); }
+.river .tile { width: calc(var(--tile-w) * .66); height: calc(var(--tile-h) * .66); }
 /* 四家棄牌環繞中央牌山,集中成一個正方形牌池 */
 .river.self  { top: calc(50% + 42px);  left: 50%; transform: translateX(-50%); align-items: center; }
 .river.top   { bottom: calc(50% + 42px); left: 50%; transform: translateX(-50%); align-items: center; flex-direction: column-reverse; }
@@ -427,9 +468,25 @@ body {
 /* ---------- your area(主角:手牌撐滿整個螢幕寬)---------- */
 .self {
   display: flex; flex-direction: column; gap: 2px;
-  padding: 0 6px calc(var(--tile-h) * .08);
+  padding: 0 6px calc(var(--sb-h) + 4px);   /* 底部保留給狀態列 */
   justify-content: flex-end;
 }
+/* 明星3缺一式底部狀態列(滿版貼底) */
+.selfbar {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 8;
+  display: flex; align-items: center; gap: 10px; height: var(--sb-h); padding: 0 12px;
+  background: linear-gradient(180deg, rgba(14,10,7,.85), rgba(0,0,0,.92));
+  border-top: 1px solid rgba(220,190,120,.35);
+  font-size: clamp(10px, 1.7vw, 13px); font-weight: 800; color: #e8dcc2;
+}
+.selfbar:empty { display: none; }
+.sb-wind {
+  background: #1f7a3e; color: #fff; border-radius: 6px; padding: 2px 9px; font-weight: 900;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.22);
+}
+.sb-wind.dealer { background: var(--blood); }
+.sb-info { color: #d9cbaa; }
+.sb-coin { margin-left: auto; color: #ffcf5a; font-weight: 900; letter-spacing: .02em; }
 .self-melds { display: flex; gap: 8px; min-height: 0; align-items: flex-end; justify-content: center; flex-wrap: wrap; }
 .hand {
   display: flex; gap: 0; align-items: flex-end; justify-content: center;
