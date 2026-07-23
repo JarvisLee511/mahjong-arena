@@ -297,7 +297,8 @@
 }
 
 .opp-flowers,
-.self-melds > .flowers {
+.self-melds > .flowers,
+.self-flowers {
   padding: 2px;
   border: 1px solid rgba(236, 211, 151, .48);
   border-radius: 4px;
@@ -506,9 +507,25 @@
 .river-row { gap: 2px; }
 
 .river .tile {
-  width: calc(var(--tile-w) * .50);
-  height: calc(var(--tile-h) * .50);
+  width: clamp(15px, calc(var(--tile-w) * .40), 28px);
+  height: clamp(25px, calc(var(--tile-h) * .40), 48px);
   filter: none;
+}
+
+.river-history {
+  display: grid;
+  flex: 0 0 auto;
+  width: clamp(15px, calc(var(--tile-w) * .40), 28px);
+  height: clamp(25px, calc(var(--tile-h) * .40), 48px);
+  place-items: center;
+  border: 1px solid rgba(255, 229, 157, .68);
+  border-radius: 4px;
+  background: linear-gradient(145deg, #527f70, #244f43);
+  color: #fff4c5;
+  font-size: clamp(8px, 1.8vmin, 11px);
+  font-weight: 900;
+  line-height: 1;
+  box-shadow: 0 2px 0 #173b31, 0 3px 5px rgba(0, 0, 0, .35);
 }
 
 .river.bottom-seat {
@@ -611,6 +628,22 @@
 .self-melds .flowers .tile {
   width: calc(var(--tile-w) * .42);
   height: calc(var(--tile-h) * .42);
+}
+
+.self-flowers {
+  position: absolute;
+  left: max(8px, env(safe-area-inset-left));
+  bottom: calc(var(--sb-h) + var(--tile-h) + 5px);
+  z-index: 6;
+  pointer-events: none;
+  display: none;
+  max-width: calc(100% - 16px);
+  gap: 2px;
+}
+.self-flowers:not(:empty) { display: flex; }
+.self-flowers .tile {
+  width: calc(var(--tile-w) * .40);
+  height: calc(var(--tile-h) * .40);
 }
 
 .tenpai-bar.on {
@@ -871,11 +904,12 @@
 
 @media (max-height: 500px) {
   #app {
-    --sb-h: calc(46px + env(safe-area-inset-bottom));
+    --sb-h: calc(clamp(36px, 12vh, 46px) + env(safe-area-inset-bottom));
     --seat-side: clamp(56px, 9vw, 74px);
-    --top-zone: clamp(72px, 19.5vh, 80px);
-    --self-zone: calc(var(--tile-h) + var(--sb-h) + 12px);
-    --avatar-size: clamp(70px, 18vh, 82px);
+    --top-zone: clamp(56px, 19.5vh, 80px);
+    --self-zone: calc(var(--tile-h) + var(--sb-h) + clamp(6px, 2vh, 12px));
+    --avatar-size: clamp(54px, 18vh, 82px);
+    --table-shift: clamp(4px, 1.5vh, 8px);
   }
 
   .table .avatar { --sz: var(--avatar-size); }
@@ -895,6 +929,7 @@
     height: calc(100% - 6px);
     border-width: 6px;
     border-radius: 0;
+    clip-path: polygon(12% 0, 88% 0, 100% 100%, 0 100%);
   }
 
   .pond { inset: 6px; }
@@ -903,11 +938,12 @@
     --wall-stack-d: 9px;
     --wall-lift: 3px;
   }
-  .river .tile { width: calc(var(--tile-w) * .38); height: calc(var(--tile-h) * .38); }
-  .river.bottom-seat { bottom: calc(var(--wall-stack-d) + var(--wall-lift) + 3px); }
-  .river.top-seat { top: calc(var(--wall-stack-d) + var(--wall-lift) + 3px); }
-  .river.left-seat { left: 17%; }
-  .river.right-seat { right: 17%; }
+  .river.bottom-seat { bottom: calc(var(--wall-stack-d) + var(--wall-lift) - 3px); }
+  .river.top-seat { top: calc(var(--wall-stack-d) + var(--wall-lift) - 3px); }
+  .river.left-seat { left: 15%; }
+  .river.right-seat { right: 15%; }
+  .mwall.left { left: 8%; }
+  .mwall.right { right: 8%; }
   .mwall.bottom { bottom: calc(clamp(10px, 2.2vh, 18px) - 2px); }
 
   .wallpile {
@@ -941,10 +977,36 @@
 }
 
 @media (max-height: 500px) and (max-width: 720px) {
-  .river.left-seat { left: 14%; }
-  .river.right-seat { right: 14%; }
+  .river.left-seat { left: 15%; }
+  .river.right-seat { right: 15%; }
   .mwall.left { left: 8%; }
   .mwall.right { right: 8%; }
+}
+
+@media (max-height: 500px) and (max-width: 619px) {
+  .river.left-seat { left: 13%; }
+  .river.right-seat { right: 13%; }
+}
+
+@media (max-height: 500px) and (min-width: 700px) and (max-width: 819px),
+       (max-height: 500px) and (min-width: 920px) {
+  .river.left-seat { left: 16%; }
+  .river.right-seat { right: 16%; }
+}
+
+@media (max-height: 300px) {
+  .center { clip-path: polygon(6% 0, 94% 0, 100% 100%, 0 100%); }
+  .river.left-seat { left: -10px; }
+  .river.right-seat { right: -10px; }
+  .mwall.left { left: 5%; }
+  .mwall.right { right: 5%; }
+  .self-flowers { left: 50%; transform: translateX(-50%); }
+  .river-history { font-size: 7px; }
+}
+
+@media (max-height: 320px) {
+  .act-btn { --d: 36px; }
+  .act-btn.hu { --d: 38px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

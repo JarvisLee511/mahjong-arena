@@ -38,64 +38,69 @@
   function roomOverlay() {
     let o = $('#room');
     if (!o) {
-      o = el('div', ''); o.id = 'room';
-      o.style.cssText = 'position:fixed;inset:0;z-index:150;display:flex;align-items:center;justify-content:center;padding:20px;background:radial-gradient(70% 60% at 50% 30%,rgba(255,45,85,.10),transparent 60%),#0B0E14';
+      o = el('div', 'room-overlay'); o.id = 'room';
       document.body.appendChild(o);
     }
     o.style.display = 'flex';
     return o;
   }
   function hideRoom() { const o = $('#room'); if (o) o.style.display = 'none'; }
+  function enterTable() {
+    hideRoom();
+    $('#lobby').style.display = 'none';
+    $('#app').classList.add('on');
+    window.MJView.prepareTableLayout();
+    $('#btnAuto').style.display = 'none';
+  }
 
   function renderRoom() {
     const o = roomOverlay(); o.innerHTML = '';
-    const card = el('div', 'lobby-card'); card.style.gap = '16px';
-    card.appendChild(Object.assign(el('h1', 'neon', '房號'), { style: 'font-size:26px;text-align:center' }));
-    const codeBox = el('div', ''); codeBox.style.cssText = 'text-align:center;font-size:44px;font-weight:900;letter-spacing:.25em;color:#FFD24C;text-shadow:0 0 16px rgba(255,210,76,.6)';
+    const card = el('div', 'lobby-card room-card');
+    card.appendChild(el('h1', 'neon room-title', '房號'));
+    const codeBox = el('div', 'room-code');
     codeBox.textContent = window.MJNet.code; card.appendChild(codeBox);
     if (mode === 'host') {
-      const cp = el('div', 'hint', window.MJNet.usingSupabase ? '把房號給朋友,他們輸入就能入座' : '本機測試模式(多分頁):同房號開分頁即可');
+      const cp = el('div', 'hint room-copy', window.MJNet.usingSupabase ? '把房號給朋友,他們輸入就能入座' : '本機測試模式(多分頁):同房號開分頁即可');
       card.appendChild(cp);
       const c = cfg();
-      const set = el('div', 'hint', `${c.rule === 'swap' ? '換三張' : '十六張'} · ${c.len === 'game' ? '一將' : '一圈'} · 底注 ${c.stake}`);
-      set.style.color = 'var(--gold)'; card.appendChild(set);
+      const set = el('div', 'hint room-summary', `${c.rule === 'swap' ? '換三張' : '十六張'} · ${c.len === 'game' ? '一將' : '一圈'} · 底注 ${c.stake}`);
+      card.appendChild(set);
     }
     // roster
-    const list = el('div', ''); list.style.cssText = 'display:flex;flex-direction:column;gap:8px';
+    const list = el('div', 'room-roster');
     const roster = (mode === 'host') ? seats : (window._guestRoster || []);
     [0, 1, 2, 3].forEach((i) => {
       const s = roster[i] || {};
-      const row = el('div', ''); row.style.cssText = 'display:flex;align-items:center;gap:10px;background:#0c0f16;border:1px solid #2a3140;border-radius:12px;padding:10px 14px';
+      const row = el('div', 'room-seat');
       const wind = window.MJView.WIND[window.MJ.SEAT_WIND[i]];
-      const badge = el('div', '', wind); badge.style.cssText = 'width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:#000;color:#FFD24C;border:1.5px solid #FFD24C;font-weight:900';
+      const badge = el('div', 'room-wind', wind);
       row.appendChild(badge);
-      const nm = el('div', '', s.name || '（空位 → 電腦補位）');
-      nm.style.cssText = 'flex:1;font-weight:800;color:' + (s.name ? '#fff' : '#7f8c96');
+      const nm = el('div', 'room-name' + (s.name ? '' : ' empty'), s.name || '（空位 → 電腦補位）');
       if (i === 0) nm.textContent = (s.name || '房主') + (mode === 'host' ? '(你)' : '');
       row.appendChild(nm);
-      if (mySeat === i && mode === 'guest') { const you = el('div', '', '你'); you.style.cssText = 'color:#00E5D0;font-weight:800'; row.appendChild(you); }
+      if (mySeat === i && mode === 'guest') row.appendChild(el('div', 'room-you', '你'));
       list.appendChild(row);
     });
     card.appendChild(list);
 
     if (mode === 'host') {
-      const start = el('button', 'btn', '開始牌局(空位由電腦補位)');
+      const start = el('button', 'btn room-start', '開始牌局(空位由電腦補位)');
       start.addEventListener('click', hostStartGame);
       card.appendChild(start);
     } else {
       if (mySeat != null) {
-        card.appendChild(el('div', 'hint', '✅ 已入座,等待房主開始…'));
+        card.appendChild(el('div', 'hint room-state', '已入座,等待房主開始…'));
       } else if (joinStatus === 'failed') {
-        const w = el('div', 'hint', '暫時找不到房主(房號 ' + window.MJNet.code + ')，系統仍會自動重試。請確認:①房號輸入正確 ②房主已按「建立房間」並停留在房間畫面 ③雙方網路正常。');
-        w.style.color = '#ff6b6b'; card.appendChild(w);
-        const retry = el('button', 'btn', '重新嘗試加入');
+        const w = el('div', 'hint room-state error', '暫時找不到房主(房號 ' + window.MJNet.code + ')，系統仍會自動重試。請確認:①房號輸入正確 ②房主已按「建立房間」並停留在房間畫面 ③雙方網路正常。');
+        card.appendChild(w);
+        const retry = el('button', 'btn room-start', '重新嘗試加入');
         retry.addEventListener('click', () => { joinStatus = 'connecting'; renderRoom(); startJoinHandshake(); });
         card.appendChild(retry);
       } else {
-        card.appendChild(el('div', 'hint', '🔗 連線中… 正在尋找房主(房號 ' + window.MJNet.code + ')'));
+        card.appendChild(el('div', 'hint room-state', '連線中… 正在尋找房主(房號 ' + window.MJNet.code + ')'));
       }
     }
-    const leave = el('button', 'btn ghost', '離開房間');
+    const leave = el('button', 'btn ghost room-leave', '離開房間');
     leave.addEventListener('click', () => location.reload());
     card.appendChild(leave);
     o.appendChild(card);
@@ -180,9 +185,7 @@
     window.MJNet.send('begin', { roster: seats.map((s) => ({ seat: s.seat, name: s.name, ai: !!s.ai })) });
     MJSound.bgmStop(); if (window.__lobbyFX) window.__lobbyFX.stop();
     const mb = $('#btnMusic'); if (!mb || mb.dataset.on !== '0') MJSound.bgmStart('game');
-    hideRoom();
-    $('#lobby').style.display = 'none'; $('#app').classList.add('on');
-    $('#btnAuto').style.display = 'none';
+    enterTable();
     scores = [0, 0, 0, 0]; dealerIndex = 0; streak = 0; roundWind = 'z1'; dealerPasses = 0;
     sessionStats = [0, 1, 2, 3].map(() => ({ hu: 0, tsumo: 0, dealIn: 0 }));
     window.MJNet.send('dice', { name: nameOf(dealerIndex) });   // ⑧ 擲骰決莊(客人同步)
@@ -398,7 +401,7 @@
     if (type === 'welcome') { mySeat = payload.seat; joinStatus = 'seated'; clearTimeout(joinTimer); window._guestRoster = payload.roster; renderRoom(); }
     else if (type === 'roster') { window._guestRoster = payload.roster; renderRoom(); }
     else if (type === 'full') { alert('房間已滿或已開打 🙇'); location.reload(); }
-    else if (type === 'begin') { MJSound.bgmStop(); if (window.__lobbyFX) window.__lobbyFX.stop(); const mb = $('#btnMusic'); if (!mb || mb.dataset.on !== '0') MJSound.bgmStart('game'); hideRoom(); $('#lobby').style.display = 'none'; $('#app').classList.add('on'); $('#btnAuto').style.display = 'none'; }
+    else if (type === 'begin') { MJSound.bgmStop(); if (window.__lobbyFX) window.__lobbyFX.stop(); const mb = $('#btnMusic'); if (!mb || mb.dataset.on !== '0') MJSound.bgmStart('game'); enterTable(); }
     else if (type === 'view') {
       const v = payload; v.mySeat = mySeat;
       window.MJView.hideResult();
@@ -470,6 +473,7 @@
   $('#btnJoin').addEventListener('click', async () => {
     const code = cleanRoomCode();
     if (code.length !== 6) { alert('請輸入完整的 6 碼房號'); codeInput.focus(); return; }
+    codeInput.blur();
     MJSound.unlock(); mode = 'guest'; myName = myNick() || '玩家';
     const jb = $('#btnJoin'); jb.disabled = true; jb.textContent = '連線中…';
     try {

@@ -59,7 +59,7 @@
     pung: '碰', kong: '槓', chow: '吃', hu: '胡啦', tsumo: '自摸',
     draw: '流局', tenpai: '聽牌', start: '開始',
   };
-  const BOOSTED_VOICES = new Set(['pung', 'kong', 'chow', 'hu', 'tsumo']);
+  const BOOSTED_RECORDED_CLAIMS = new Set(['pung', 'kong', 'chow', 'hu']);
   const clips = {};            // key -> HTMLAudioElement
   const boostedSources = new WeakMap();
   let boostedGain = null, boostedLimiter = null;
@@ -103,7 +103,7 @@
         (files || []).forEach((f) => {
           const key = String(f).replace(/\.[^.]+$/, '');
           const a = new Audio('assets/audio/' + f); a.preload = 'auto';
-          a.volume = BOOSTED_VOICES.has(key) ? 1 : 0.95;
+          a.volume = BOOSTED_RECORDED_CLAIMS.has(key) ? 1 : 0.95;
           clips[key] = a;
         });
       })
@@ -114,11 +114,11 @@
     const a = clips[key];
     if (a) {
       try {
-        if (BOOSTED_VOICES.has(key)) routeBoostedVoice(a);
+        if (BOOSTED_RECORDED_CLAIMS.has(key)) routeBoostedVoice(a);
         a.currentTime = 0; a.play(); return;
       } catch (e) {}
     }
-    say(VOICE[key] || key, BOOSTED_VOICES.has(key) ? 1 : 0.9);    // fallback: 國語 TTS
+    say(VOICE[key] || key);    // fallback TTS keeps its normal volume
   }
   // 報牌:打出的每張牌念出牌名。有 assets/audio/<code>.* 音檔就播,否則國語 TTS。
   function tileVoice(code, spoken) {

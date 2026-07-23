@@ -8,8 +8,8 @@
 <title>該死的賭徒們 · Damn Gamblers</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&family=Ma+Shan+Zheng&family=Zhi+Mang+Xing&family=Bebas+Neue&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=34">
-<link rel="stylesheet" href="css/table.css?v=5">
+  <link rel="stylesheet" href="css/style.css?v=38">
+<link rel="stylesheet" href="css/table.css?v=12">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="manifest" href="manifest.json">
 </head>
@@ -17,7 +17,7 @@
 
 <!-- ============ LOBBY ============ -->
 <div id="lobby">
-  <button class="icon-btn" id="btnMusic" data-on="1" title="音樂" style="position:absolute;top:14px;right:14px;z-index:3">♪</button>
+  <button class="icon-btn" id="btnMusic" data-on="1" title="音樂" style="position:absolute;top:8px;right:14px;z-index:3">♪</button>
   <div class="noir-spot"></div>
   <div class="noir-suits" aria-hidden="true">♠ ♥ ♦ ♣</div>
   <canvas class="coin-canvas" id="coinCanvas" aria-hidden="true"></canvas>
@@ -103,6 +103,7 @@
 
     <div class="self">
       <div class="tenpai-bar" id="tenpaiBar"></div>
+      <div class="self-flowers" id="myFlowers"></div>
       <div class="player-rack">
         <div class="self-melds" id="myMelds"></div>
         <div class="hand" id="myHand"></div>
@@ -140,22 +141,25 @@
 /* 明星3缺一式「手牌驅動」尺寸:手牌整排撐滿螢幕寬(17 張),牌越大越好但不溢出。
    算出單張牌寬高寫進 --tile-w/--tile-h,牌桌所有牌(手牌/副露/牌河/牌背)都由它衍生。 */
 (function () {
-  var N = 17.6;               // 16 張 + 摸牌 + 摸牌間隔
+  var N = 18;                 // 17 張 + 摸牌間隔 + 牌縫
   var RATIO = 1.72;           // 牌高/牌寬
   function fit() {
     var vw = window.innerWidth, vh = window.innerHeight;
     var css = getComputedStyle(document.documentElement);
     var safeLeft = parseFloat(css.getPropertyValue('--safe-left')) || 0;
     var safeRight = parseFloat(css.getPropertyValue('--safe-right')) || 0;
-    var usableWidth = Math.min((vw - safeLeft - safeRight) * 0.9, 1120);
+    var usableWidth = Math.min(vw - safeLeft - safeRight - 10, 1120);
     var wByWidth = usableWidth / N;
-    var h = Math.min(wByWidth * RATIO, vh * 0.18, 108);
+    var h = Math.min(wByWidth * RATIO, vh * 0.20, 108);
     var w = h / RATIO;
     document.documentElement.style.setProperty('--tile-w', w.toFixed(2) + 'px');
     document.documentElement.style.setProperty('--tile-h', h.toFixed(2) + 'px');
   }
+  window.MJLayout = window.MJLayout || {};
+  window.MJLayout.fitTiles = fit;
   window.addEventListener('resize', fit);
   window.addEventListener('orientationchange', fit);
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', fit);
   fit();
 })();
 </script>
@@ -163,9 +167,9 @@
 <script src="js/engine.js?v=28"></script>
 <script src="js/game.js?v=29"></script>
 <script src="js/ai.js?v=28"></script>
-<script src="js/sound.js?v=29"></script>
-<script src="js/ui.js?v=33"></script>
+<script src="js/sound.js?v=30"></script>
+<script src="js/ui.js?v=38"></script>
 <script src="js/net.js?v=31"></script>
-<script src="js/online.js?v=32"></script>
+<script src="js/online.js?v=34"></script>
 </body>
 </html>

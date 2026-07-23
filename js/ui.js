@@ -34,9 +34,11 @@
   let selected = null;
   let swapSel = new Set();
   let swapViewKey = null;
+  let lastPondView = null;
 
   function renderView(v, handlers) {
     handlers = handlers || {};
+    lastPondView = v;
     const nextSwapKey = v.phase === 'swap' && v.swap ? `${v.mySeat}:${v.swap.round}` : null;
     if (nextSwapKey !== swapViewKey) swapSel.clear();
     swapViewKey = nextSwapKey;
@@ -129,11 +131,12 @@
 
   function renderSelf(v, handlers) {
     const me = v.players[v.mySeat];
-    // melds + flowers
+    // Flowers stay on their own tray so they never shrink the playable hand.
+    const flowers = $('#myFlowers'); flowers.innerHTML = '';
+    (me.flowers || []).forEach((f) => flowers.appendChild(tileEl(f)));
+
+    // exposed melds
     const mm = $('#myMelds'); mm.innerHTML = '';
-    if (me.flowers && me.flowers.length) {
-      const fl = el('div', 'flowers'); me.flowers.forEach((f) => fl.appendChild(tileEl(f))); mm.appendChild(fl);
-    }
     (me.melds || []).forEach((m) => mm.appendChild(meldGroup(m)));
 
     // hand — 16 sorted tiles butted together; the freshly-drawn tile is
@@ -212,7 +215,8 @@
 
     const tableRect = center.getBoundingClientRect();
     if (!tableRect.width || !tableRect.height) return;
-    const angle = Math.atan2(tableRect.width * 0.22, tableRect.height) * 180 / Math.PI;
+    const tableSlope = window.innerHeight < 300 ? 0.06 : (window.innerHeight <= 500 ? 0.12 : 0.22);
+    const angle = Math.atan2(tableRect.width * tableSlope, tableRect.height) * 180 / Math.PI;
     app.style.setProperty('--table-side-angle', `${angle.toFixed(3)}deg`);
     app.style.setProperty('--table-side-angle-neg', `${(-angle).toFixed(3)}deg`);
 
@@ -220,7 +224,7 @@
       const seatRect = seat.getBoundingClientRect();
       const anchorY = seatRect.top + backs.offsetTop;
       const progress = Math.min(1, Math.max(0, (anchorY - tableRect.top) / tableRect.height));
-      const inset = tableRect.width * 0.22 * (1 - progress);
+      const inset = tableRect.width * tableSlope * (1 - progress);
       const edgeX = side === 'left' ? tableRect.left + inset : tableRect.right - inset;
       const railGap = Math.min(5, Math.max(2, backs.offsetWidth * 0.12));
       const targetX = edgeX + (side === 'left' ? -railGap : railGap);
@@ -253,7 +257,7 @@
     if (!topSeat || !topBacks) return;
     const topSeatRect = topSeat.getBoundingClientRect();
     const topBacksRect = topBacks.getBoundingClientRect();
-    const farRight = tableRect.right - tableRect.width * 0.22;
+    const farRight = tableRect.right - tableRect.width * tableSlope;
     const edgeGap = 8;
     const rootStyle = getComputedStyle(document.documentElement);
     const safeLeft = parseFloat(rootStyle.getPropertyValue('--safe-left')) || 0;
@@ -284,25 +288,53 @@
     }
   }
 
-  window.addEventListener('resize', () => requestAnimationFrame(() => {
-    fitPlayerRack();
-    fitTableGeometry();
-  }));
+  let layoutFrame = 0;
+  function refitTable() {
+    if (window.MJLayout && window.MJLayout.fitTiles) window.MJLayout.fitTiles();
+    cancelAnimationFrame(layoutFrame);
+    layoutFrame = requestAnimationFrame(() => {
+      layoutFrame = 0;
+      if (lastPondView) renderPond(lastPondView);
+      fitPlayerRack();
+      fitTableGeometry();
+    });
+  }
+
+  function prepareTableLayout() {
+    const active = document.activeElement;
+    if (active && typeof active.blur === 'function') active.blur();
+    refitTable();
+    setTimeout(refitTable, 320);
+  }
+
+  window.addEventListener('resize', refitTable);
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', refitTable);
 
   function renderPond(v) {
     const pond = $('#pond'); pond.innerHTML = '';
-    const PER_ROW = { 0: 12, 1: 8, 2: 12, 3: 8 };
+    const compact = window.innerHeight < 300;
+    const horizontalLimit = compact ? 12 : 20;
+    const sideLimit = compact ? 6 : (window.innerWidth < 620 ? 10 : (window.innerWidth < 820 ? 15 : 20));
     for (const p of [0, 1, 2, 3]) {
       const pos = (p - v.mySeat + 4) & 3;
       const r = el('div', 'river ' + DIR[pos]);
-      const ds = v.players[p].discards || [];
-      const per = PER_ROW[pos];
-      for (let i = 0; i < ds.length; i += per) {
+      const allDiscards = v.players[p].discards || [];
+      const visibleLimit = (pos === 1 || pos === 3) ? sideLimit : horizontalLimit;
+      const hidden = allDiscards.length > visibleLimit ? allDiscards.length - visibleLimit + 1 : 0;
+      const ds = hidden ? allDiscards.slice(-(visibleLimit - 1)) : allDiscards;
+      const entries = hidden ? [{ hidden }, ...ds.map((tile) => ({ tile }))] : ds.map((tile) => ({ tile }));
+      const per = (pos === 1 || pos === 3) ? (compact ? 6 : 5) : (compact ? 12 : 10);
+      for (let i = 0; i < entries.length; i += per) {
         const row = el('div', 'river-row');
-        ds.slice(i, i + per).forEach((t, j) => {
-          const idx = i + j;
+        entries.slice(i, i + per).forEach((entry, j) => {
+          if (entry.hidden) {
+            row.appendChild(el('div', 'river-history', '+' + entry.hidden));
+            return;
+          }
+          const t = entry.tile;
+          const idx = allDiscards.length - ds.length + i + j - (hidden ? 1 : 0);
           const isLast = v.lastDiscard && v.lastDiscard.from === p &&
-            v.lastDiscard.tile === t && idx === ds.length - 1;
+            v.lastDiscard.tile === t && idx === allDiscards.length - 1;
           row.appendChild(tileEl(t, isLast ? 'last' : ''));
         });
         r.appendChild(row);
@@ -628,7 +660,7 @@
   }
 
   // expose renderer for online.js + solo
-  window.MJView = { renderView, toast, rollDice, rollDealer, burst, playWinAnim, showResult, hideResult, clearSelection, showBubble, nicknames, tileEl, WIND };
+  window.MJView = { renderView, toast, rollDice, rollDealer, burst, playWinAnim, showResult, hideResult, clearSelection, showBubble, nicknames, tileEl, refitTable, prepareTableLayout, WIND };
 
   // ============================================================
   //  SINGLE-PLAYER CONTROLLER
@@ -813,6 +845,7 @@
     sessionStats = [0, 1, 2, 3].map(() => ({ hu: 0, tsumo: 0, dealIn: 0 }));
     MJSound.bgmStop(); if (window.__lobbyFX) window.__lobbyFX.stop();
     $('#lobby').style.display = 'none'; $('#app').classList.add('on');
+    prepareTableLayout();
     const mb = $('#btnMusic'); if (!mb || mb.dataset.on !== '0') MJSound.bgmStart('game');   // 遊戲中中國風輕音樂
     MJView.rollDealer(NAMES[dealerIndex], startHand);   // ⑧ 擲骰決莊開場
   }
