@@ -903,23 +903,25 @@
     --wall-stack-d: 9px;
     --wall-lift: 3px;
   }
-  .river .tile { width: calc(var(--tile-w) * .35); height: calc(var(--tile-h) * .35); }
-  .river.bottom-seat { bottom: calc(var(--wall-stack-d) + var(--wall-lift) + 5px); }
-  .river.top-seat { top: calc(var(--wall-stack-d) + var(--wall-lift) + 4px); }
-  .river.left-seat { left: 18%; }
-  .river.right-seat { right: 18%; }
+  .river .tile { width: calc(var(--tile-w) * .38); height: calc(var(--tile-h) * .38); }
+  .river.bottom-seat { bottom: calc(var(--wall-stack-d) + var(--wall-lift) + 3px); }
+  .river.top-seat { top: calc(var(--wall-stack-d) + var(--wall-lift) + 3px); }
+  .river.left-seat { left: 17%; }
+  .river.right-seat { right: 17%; }
+  .mwall.bottom { bottom: calc(clamp(10px, 2.2vh, 18px) - 2px); }
 
   .wallpile {
     display: flex;
     width: auto;
-    min-height: 18px;
-    padding: 0 5px;
-    gap: 4px;
+    min-height: 14px;
+    padding: 0 4px;
+    gap: 3px;
+    border-width: 1px;
   }
 
-  .wallpile .rw { font-size: 8px; }
-  .wallpile .wall { font-size: 13px; }
-  .wallpile .wall small { font-size: 8px; }
+  .wallpile .rw { font-size: 7px; }
+  .wallpile .wall { font-size: 10px; }
+  .wallpile .wall small { font-size: 7px; }
   .wallpile .dice { display: none; }
 
   .tenpai-bar.on,
@@ -938,6 +940,13 @@
   .avatar .sc { font-size: 8px; padding: 1px 4px; }
 }
 
+@media (max-height: 500px) and (max-width: 720px) {
+  .river.left-seat { left: 14%; }
+  .river.right-seat { right: 14%; }
+  .mwall.left { left: 8%; }
+  .mwall.right { right: 8%; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .hand .tile,
   .river .tile.last,
@@ -945,7 +954,6 @@
 }
 
 @media (orientation: portrait) {
-  #rotate { display: flex; }
-  #app,
+  #app.on ~ #rotate { display: flex; }
   #app.on { display: none; }
 }

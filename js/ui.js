@@ -635,7 +635,7 @@
   // ============================================================
   const NAMES = ['你', '阿明', '秀蓮', '土豆伯'];
   const TAUNTS = ['等你很久了', '快一點啦', '手氣真好齁', '穩住', '唉呦', '嘿嘿', '這張安啦'];
-  let cfg = { rule: 'std', lvl: 'normal', len: 'round', stake: '30/10', multi: 'multi' };
+  let cfg = { rule: 'std', lvl: 'normal', len: 'round', stake: '30/10' };
   const roundTarget = () => (cfg.len === 'game' ? 16 : 4);   // 一將16莊 / 一圈4莊
   const stakeVals = () => { const [b, t] = (cfg.stake || '30/10').split('/').map(Number); return { base: b, tai: t }; };  // 底/台點數
   let G = null, scores = [0, 0, 0, 0], dealerIndex = 0, streak = 0, roundWind = 'z1', busy = false;
@@ -803,7 +803,7 @@
   function startHand() {
     busy = false; soloHint = null; MJView.clearSelection();
     roundWind = (cfg.len === 'game') ? window.MJ.SEAT_WIND[Math.min(3, Math.floor(dealerPasses / 4))] : 'z1';  // 一將輪圈風
-    G = new Game({ dealerIndex, roundWind, streak, aiLevel: cfg.lvl, swapMode: cfg.rule === 'swap', allowMultiHu: cfg.multi !== 'single', onEvent: onGameEvent });
+    G = new Game({ dealerIndex, roundWind, streak, aiLevel: cfg.lvl, swapMode: cfg.rule === 'swap', allowMultiHu: true, onEvent: onGameEvent });
     MJView.rollDice(); soloRender(); MJSound.fx('deal');
     setTimeout(soloAdvance, 480);
   }
@@ -825,7 +825,7 @@
       b.classList.add('on'); cfg[key] = b.dataset[prop];
     });
   }
-  seg('ruleSeg', 'rule', 'rule'); seg('lvlSeg', 'lvl', 'lvl'); seg('lenSeg', 'len', 'len'); seg('stakeSeg', 'stake', 'stake'); seg('multiSeg', 'multi', 'multi');
+  seg('ruleSeg', 'rule', 'rule'); seg('lvlSeg', 'lvl', 'lvl'); seg('lenSeg', 'len', 'len'); seg('stakeSeg', 'stake', 'stake');
   $('#btnJoinToggle').addEventListener('click', () => { const f = $('#joinField'); f.style.display = f.style.display === 'none' ? 'flex' : 'none'; });
   $('#btnSolo').addEventListener('click', () => { MJSound.unlock(); startSolo(); });
   $('#btnSound').addEventListener('click', (e) => { MJSound.enabled = !MJSound.enabled; e.currentTarget.textContent = MJSound.enabled ? '♪' : '×'; });

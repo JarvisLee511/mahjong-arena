@@ -59,8 +59,40 @@
     pung: '碰', kong: '槓', chow: '吃', hu: '胡啦', tsumo: '自摸',
     draw: '流局', tenpai: '聽牌', start: '開始',
   };
+  const BOOSTED_VOICES = new Set(['pung', 'kong', 'chow', 'hu', 'tsumo']);
   const clips = {};            // key -> HTMLAudioElement
+  const boostedSources = new WeakMap();
+  let boostedGain = null, boostedLimiter = null;
   let voicesTried = false;
+
+  // Claim calls need more presence than tile names, but raw 3x gain clips loudly.
+  // Keep the gain on its own bus and catch peaks before they reach the speakers.
+  function routeBoostedVoice(audio) {
+    const a = ac();
+    if (!a) return false;
+    try {
+      if (!boostedGain) {
+        boostedGain = a.createGain();
+        boostedGain.gain.value = 3;
+        boostedLimiter = a.createDynamicsCompressor();
+        boostedLimiter.threshold.value = -6;
+        boostedLimiter.knee.value = 0;
+        boostedLimiter.ratio.value = 20;
+        boostedLimiter.attack.value = 0.001;
+        boostedLimiter.release.value = 0.12;
+        boostedGain.connect(boostedLimiter);
+        boostedLimiter.connect(a.destination);
+      }
+      if (!boostedSources.has(audio)) {
+        const source = a.createMediaElementSource(audio);
+        source.connect(boostedGain);
+        boostedSources.set(audio, source);
+      }
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
   // load only the files listed in assets/audio/manifest.json → no 404 spam.
   // manifest is a JSON array of filenames, e.g. ["pung.m4a","hu.mp3"].
   function preloadVoices() {
@@ -70,7 +102,8 @@
       .then((files) => {
         (files || []).forEach((f) => {
           const key = String(f).replace(/\.[^.]+$/, '');
-          const a = new Audio('assets/audio/' + f); a.preload = 'auto'; a.volume = 0.95;
+          const a = new Audio('assets/audio/' + f); a.preload = 'auto';
+          a.volume = BOOSTED_VOICES.has(key) ? 1 : 0.95;
           clips[key] = a;
         });
       })
@@ -79,8 +112,13 @@
   function voice(key) {
     if (!enabled) return;
     const a = clips[key];
-    if (a) { try { a.currentTime = 0; a.play(); return; } catch (e) {} }
-    say(VOICE[key] || key);    // fallback: 國語 TTS
+    if (a) {
+      try {
+        if (BOOSTED_VOICES.has(key)) routeBoostedVoice(a);
+        a.currentTime = 0; a.play(); return;
+      } catch (e) {}
+    }
+    say(VOICE[key] || key, BOOSTED_VOICES.has(key) ? 1 : 0.9);    // fallback: 國語 TTS
   }
   // 報牌:打出的每張牌念出牌名。有 assets/audio/<code>.* 音檔就播,否則國語 TTS。
   function tileVoice(code, spoken) {
@@ -97,11 +135,11 @@
     loadVoices();
     speechSynthesis.onvoiceschanged = loadVoices;
   }
-  function say(text) {
+  function say(text, volume) {
     if (!enabled || !window.speechSynthesis) return;
     try {
       const u = new SpeechSynthesisUtterance(text);
-      u.lang = lang; u.rate = 1.05; u.pitch = 1.0; u.volume = 0.9;
+      u.lang = lang; u.rate = 1.05; u.pitch = 1.0; u.volume = volume ?? 0.9;
       const v = voices.find((x) => /zh[-_]?(TW|HK|CN)/i.test(x.lang));
       if (v) u.voice = v;
       speechSynthesis.cancel();

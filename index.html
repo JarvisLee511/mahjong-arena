@@ -8,19 +8,12 @@
 <title>該死的賭徒們 · Damn Gamblers</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&family=Ma+Shan+Zheng&family=Zhi+Mang+Xing&family=Bebas+Neue&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=30">
-<link rel="stylesheet" href="css/table.css?v=4">
+  <link rel="stylesheet" href="css/style.css?v=34">
+<link rel="stylesheet" href="css/table.css?v=5">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="manifest" href="manifest.json">
 </head>
 <body>
-
-<!-- portrait rotate hint -->
-<div id="rotate">
-  <div class="phone">📱</div>
-  <div class="neon" style="font-size:24px">請將手機橫放</div>
-  <div class="hint">麻將四方位,橫著打才過癮</div>
-</div>
 
 <!-- ============ LOBBY ============ -->
 <div id="lobby">
@@ -61,10 +54,6 @@
       <div class="hint" id="lobbyHint">單機:你 + 3 位電腦,馬上開打。<br>連線房:房主選好設定開房,朋友輸房號入座。</div>
     </div>
     <div class="lob-col">
-      <div class="seg" id="multiSeg">
-        <button data-multi="multi" class="on">一炮多響</button>
-        <button data-multi="single">一炮一響</button>
-      </div>
       <button class="btn" id="btnSolo">單機開打(電腦補位)</button>
       <div class="field" id="nameField">
         <input id="nameInput" maxlength="8" placeholder="你的暱稱(連線用)" autocomplete="off" spellcheck="false">
@@ -74,8 +63,8 @@
         <button class="btn ghost" id="btnJoinToggle">輸入房號加入</button>
       </div>
       <div class="field" id="joinField" style="display:none">
-        <input id="codeInput" maxlength="6" placeholder="房號" autocomplete="off" spellcheck="false">
-        <button class="btn" id="btnJoin" style="padding:10px 18px">加入</button>
+        <input id="codeInput" placeholder="6 碼房號" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false">
+        <button class="btn" id="btnJoin">加入</button>
       </div>
     </div>
   </div>
@@ -124,6 +113,13 @@
   </div>
 </div>
 
+<!-- portrait rotate hint (only shown after entering the table) -->
+<div id="rotate">
+  <div class="phone">📱</div>
+  <div class="neon" style="font-size:24px">請將手機橫放</div>
+  <div class="hint">麻將四方位,橫著打才過癮</div>
+</div>
+
 <!-- 擲骰決莊 -->
 <div id="diceRoll">
   <div class="dice-box">
@@ -167,9 +163,9 @@
 <script src="js/engine.js?v=28"></script>
 <script src="js/game.js?v=29"></script>
 <script src="js/ai.js?v=28"></script>
-<script src="js/sound.js?v=28"></script>
-<script src="js/ui.js?v=32"></script>
-<script src="js/net.js?v=29"></script>
-<script src="js/online.js?v=29"></script>
+<script src="js/sound.js?v=29"></script>
+<script src="js/ui.js?v=33"></script>
+<script src="js/net.js?v=31"></script>
+<script src="js/online.js?v=32"></script>
 </body>
 </html>

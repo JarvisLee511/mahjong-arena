@@ -11,7 +11,7 @@
 
 ## 技術
 - 前端:HTML / CSS / vanilla JS(host 權威、per-seat 私牌視圖)。
-- 連線:Supabase Realtime broadcast(免建表);`?local=1` 可用 BroadcastChannel 同瀏覽器多分頁測試。
+- 連線:Supabase Realtime broadcast(免建表);`?transport=local` 可用 BroadcastChannel 同瀏覽器多分頁測試。
 - 引擎:144 張牌、胡牌判定、聽牌、台數計算,含壓力測試 `node test/stress.js`。
 
 ## 資源出處 / Credits

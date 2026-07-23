@@ -86,7 +86,7 @@
       if (mySeat != null) {
         card.appendChild(el('div', 'hint', '✅ 已入座,等待房主開始…'));
       } else if (joinStatus === 'failed') {
-        const w = el('div', 'hint', '❌ 找不到房主(房號 ' + window.MJNet.code + ')。請確認:①房號輸入正確 ②房主已按「建立房間」並停留在房間畫面 ③雙方網路正常。');
+        const w = el('div', 'hint', '暫時找不到房主(房號 ' + window.MJNet.code + ')，系統仍會自動重試。請確認:①房號輸入正確 ②房主已按「建立房間」並停留在房間畫面 ③雙方網路正常。');
         w.style.color = '#ff6b6b'; card.appendChild(w);
         const retry = el('button', 'btn', '重新嘗試加入');
         retry.addEventListener('click', () => { joinStatus = 'connecting'; renderRoom(); startJoinHandshake(); });
@@ -192,7 +192,7 @@
   function hostStartHand() {
     window.MJView.clearSelection(); window.MJView.hideResult();
     roundWind = (cfg().len === 'game') ? window.MJ.SEAT_WIND[Math.min(3, Math.floor(dealerPasses / 4))] : 'z1';
-    G = new Game({ dealerIndex, roundWind, streak, aiLevel: cfg().lvl, swapMode: cfg().rule === 'swap', allowMultiHu: cfg().multi !== 'single', onEvent: hostEvent });
+    G = new Game({ dealerIndex, roundWind, streak, aiLevel: cfg().lvl, swapMode: cfg().rule === 'swap', allowMultiHu: true, onEvent: hostEvent });
     window.MJView.rollDice();
     window.MJNet.send('flash', { fx: 'deal' });
     MJSound.fx('deal');
@@ -373,6 +373,8 @@
       // a guest reconnected mid-game → resend their current view
       const seat = seatOfCid(from);
       if (seat > 0 && G) window.MJNet.to(from, G.phase === 'over' ? 'result' : 'view', buildView(seat));
+      else if (seat > 0) window.MJNet.to(from, 'welcome', { seat, roster: rosterMsg() });
+      else if (!started) window.MJNet.to(from, 'host-rejoin', {});
     }
   }
   function rosterMsg() { return [0, 1, 2, 3].map((i) => { const s = seats[i]; return s ? { seat: i, name: s.name, ai: !!s.ai } : { seat: i }; }); }
@@ -413,7 +415,11 @@
       if (payload.voice) MJSound.voice(payload.voice);
       if (payload.tile) MJSound.tile(payload.tile, payload.tileName);
     }
-    else if (type === 'host-rejoin') { window.MJNet.send('rejoin', {}); }
+    else if (type === 'host-rejoin') {
+      if (mySeat == null) {
+        joinStatus = 'connecting'; renderRoom(); startJoinHandshake();
+      } else window.MJNet.send('rejoin', {});
+    }
     else if (type === 'emote') { onEmote(payload); }
     else if (type === 'dice') { window.MJView.rollDealer(payload.name, () => {}); }
   }
@@ -422,6 +428,16 @@
   //  Lobby buttons
   // ============================================================
   const myNick = () => (($('#nameInput') && $('#nameInput').value) || '').trim();
+  const codeInput = $('#codeInput');
+  function cleanRoomCode() {
+    const code = window.MJNet.normalizeRoomCode(codeInput.value).slice(0, 6);
+    if (codeInput.value !== code) codeInput.value = code;
+    return code;
+  }
+  codeInput.addEventListener('input', cleanRoomCode);
+  codeInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') { event.preventDefault(); $('#btnJoin').click(); }
+  });
   $('#btnCreate').addEventListener('click', async () => {
     MJSound.unlock(); mode = 'host';
     seats = [{ seat: 0, cid: window.MJNet.clientId, name: myNick() || '房主', ai: false }];
@@ -439,7 +455,12 @@
     let tries = 0;
     (function ask() {
       if (mySeat != null) { joinStatus = 'seated'; return; }   // welcome 已到
-      if (tries >= 30) { joinStatus = 'failed'; renderRoom(); return; }   // ~30 × 800ms ≈ 24 秒
+      if (tries >= 30) {
+        if (joinStatus !== 'failed') { joinStatus = 'failed'; renderRoom(); }
+        window.MJNet.send('join', { name: myName });
+        joinTimer = setTimeout(ask, 3000);
+        return;
+      }
       window.MJNet.send('join', { name: myName });
       tries++;
       joinTimer = setTimeout(ask, 800);
@@ -447,10 +468,10 @@
   }
 
   $('#btnJoin').addEventListener('click', async () => {
-    const code = ($('#codeInput').value || '').toUpperCase().trim();
-    if (code.length < 4) { alert('請輸入房號'); return; }
+    const code = cleanRoomCode();
+    if (code.length !== 6) { alert('請輸入完整的 6 碼房號'); codeInput.focus(); return; }
     MJSound.unlock(); mode = 'guest'; myName = myNick() || '玩家';
-    const jb = $('#btnJoin'); jb.disabled = true;
+    const jb = $('#btnJoin'); jb.disabled = true; jb.textContent = '連線中…';
     try {
       await window.MJNet.join(code, guestOnMsg);
       window.__onlineEmote = onlineEmote;
@@ -460,6 +481,6 @@
       startJoinHandshake();
     } catch (e) {
       alert('連線失敗:' + (e.message || e) + '\n請確認網路後再試,或先玩單機。');
-    } finally { jb.disabled = false; }
+    } finally { jb.disabled = false; jb.textContent = '加入'; }
   });
 })();
