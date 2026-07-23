@@ -8,7 +8,7 @@
 <title>該死的賭徒們 · Damn Gamblers</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&family=Ma+Shan+Zheng&family=Zhi+Mang+Xing&family=Bebas+Neue&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=23">
+<link rel="stylesheet" href="css/style.css?v=24">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="manifest" href="manifest.json">
 </head>
@@ -137,27 +137,31 @@
 </div>
 
 <script>
-/* 16:9 舞台等比縮放:算出 min(視窗寬/960, 視窗高/540) 設給 --mj-scale,
-   讓 .table(960×540)整體縮放置中、四周黑邊,任何螢幕都不溢出 */
+/* 明星3缺一式「手牌驅動」尺寸:手牌整排撐滿螢幕寬(17 張),牌越大越好但不溢出。
+   算出單張牌寬高寫進 --tile-w/--tile-h,牌桌所有牌(手牌/副露/牌河/牌背)都由它衍生。 */
 (function () {
-  var BASE_W = 960, BASE_H = 540;
+  var N = 17;                 // 16 張 + 摸的 1 張
+  var RATIO = 1.4;            // 牌高/牌寬(真麻將直立比例)
   function fit() {
     var vw = window.innerWidth, vh = window.innerHeight;
-    var s = Math.min(vw / BASE_W, vh / BASE_H);
-    document.documentElement.style.setProperty('--mj-scale', s);
+    var wByWidth = (vw - 12) / N;          // 撐滿寬度
+    var h = Math.min(wByWidth * RATIO, vh * 0.215, 112);  // 但不超過螢幕高 21.5% / 上限 112
+    var w = h / RATIO;
+    document.documentElement.style.setProperty('--tile-w', w.toFixed(2) + 'px');
+    document.documentElement.style.setProperty('--tile-h', h.toFixed(2) + 'px');
   }
   window.addEventListener('resize', fit);
   window.addEventListener('orientationchange', fit);
   fit();
 })();
 </script>
-<script src="js/tiles-art.js?v=23"></script>
-<script src="js/engine.js?v=23"></script>
-<script src="js/game.js?v=23"></script>
-<script src="js/ai.js?v=23"></script>
-<script src="js/sound.js?v=23"></script>
-<script src="js/ui.js?v=23"></script>
-<script src="js/net.js?v=23"></script>
-<script src="js/online.js?v=23"></script>
+<script src="js/tiles-art.js?v=24"></script>
+<script src="js/engine.js?v=24"></script>
+<script src="js/game.js?v=24"></script>
+<script src="js/ai.js?v=24"></script>
+<script src="js/sound.js?v=24"></script>
+<script src="js/ui.js?v=24"></script>
+<script src="js/net.js?v=24"></script>
+<script src="js/online.js?v=24"></script>
 </body>
 </html>

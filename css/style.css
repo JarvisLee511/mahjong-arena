@@ -265,24 +265,24 @@ body {
 /* ============================================================
    TABLE
    ============================================================ */
-#app { position: fixed; inset: 0; display: none; background: #000; overflow: hidden; }
-#app.on { display: flex; align-items: center; justify-content: center; }
-/* 固定 16:9 舞台(960×540):以 --mj-scale 等比縮放並置中,四周留黑邊,
-   所有內容一起縮放 → 任何螢幕比例都不會溢出或變形 */
+/* 明星3缺一式滿版牌桌:不留黑邊,手牌撐滿整個螢幕寬。
+   牌尺寸由 index.html 依螢幕寬算出的 --tile-w/--tile-h 驅動,全部牌都由它衍生。 */
+#app { position: fixed; inset: 0; display: none; overflow: hidden;
+  --tile-w: 40px; --tile-h: 56px;
+  /* 明星3缺一風:溫潤木框 + 深藍綠氈桌 + 廳堂暖光背景 */
+  background:
+    radial-gradient(120% 80% at 50% 0%, #3a2a1c 0%, #241812 40%, #140c09 100%);
+}
+#app.on { display: block; }
 .table {
-  position: relative; flex: none;
-  width: 960px; height: 540px;
-  scale: var(--mj-scale, 1);
-  transform-origin: center center;
+  position: absolute; inset: 0;
   display: grid;
-  grid-template-columns: 88px 1fr 88px;
-  grid-template-rows: 72px 1fr auto;
+  grid-template-columns: minmax(0,auto) 1fr minmax(0,auto);
+  grid-template-rows: auto minmax(0,1fr) auto;
   grid-template-areas:
-    "seatL top   seatR"
-    "seatL center seatR"
-    "self  self  self";
-  padding: 6px;
-  gap: 4px;
+    "top    top    top"
+    "seatL  center seatR"
+    "self   self   self";
 }
 .seat-top { grid-area: top; }
 .seat-left { grid-area: seatL; }
@@ -322,12 +322,12 @@ body {
 .backs { display: flex; gap: 1px 2px; flex-wrap: wrap; justify-content: center; max-width: 100%; }
 /* 上家/下家(兩側)手牌沿邊直立排成一直行,騰出中間大海 */
 .seat-left .backs, .seat-right .backs {
-  flex-direction: column; flex-wrap: wrap; align-content: center; gap: 1px; max-height: 400px;
+  flex-direction: column; flex-wrap: wrap; align-content: center; gap: 1px; max-height: 46vh;
 }
-.seat-left .tb, .seat-right .tb { width: 20px; height: 14px; }
+.seat-left .tb, .seat-right .tb { width: calc(var(--tile-w) * .5); height: calc(var(--tile-w) * .36); }
 /* 牌背:做出「兩層牌疊在一起」的立體感(頂面亮 + 疊層縫 + 側牆) */
 .tb {
-  width: 15px; height: 21px; border-radius: 2px 2px 3px 3px; position: relative;
+  width: calc(var(--tile-w) * .38); height: calc(var(--tile-h) * .38); border-radius: 2px 2px 3px 3px; position: relative;
   background: linear-gradient(180deg, #3aa06e 0 16%, #1c7a4d 16% 55%, #14663f 55% 100%);
   border: 1px solid #0a3d24;
   box-shadow: inset 0 1px 0 rgba(255,255,255,.25), 0 1px 1px rgba(0,0,0,.35);
@@ -340,22 +340,26 @@ body {
 /* 對手副露:縮小、同方向一直線排在手牌前方;上家/下家(兩側)整組轉 90° */
 .opp-melds { display: flex; gap: 4px; flex-wrap: nowrap; justify-content: center; }
 .opp-melds .meld-group { padding: 1px; gap: 0; background: rgba(0,0,0,.2); }
-.opp-melds .tile.meld-tile { width: 18px; height: 25px; }
+.opp-melds .tile.meld-tile { width: calc(var(--tile-w) * .44); height: calc(var(--tile-h) * .44); }
 .seat-left .opp-melds, .seat-right .opp-melds { flex-direction: column; align-items: center; gap: 0; }
 .seat-left .opp-melds .meld-group, .seat-right .opp-melds .meld-group { transform: rotate(90deg); margin: 15px 0; }
 
-/* ---------- center pond ---------- */
+/* ---------- center pond(明星3缺一式:木框 + 藍綠氈桌)---------- */
 .center {
-  position: relative; border-radius: 22px;
+  position: relative; margin: 5px; border-radius: 30px;
   background:
-    radial-gradient(60% 60% at 50% 45%, var(--felt-lite), var(--felt) 70%, #0a2a1f);
-  box-shadow: inset 0 0 60px rgba(0,0,0,.5), 0 0 0 2px rgba(0,229,208,.12),
-    0 0 24px rgba(0,229,208,.08);
+    radial-gradient(72% 74% at 50% 40%, #18806f 0%, #0f5f54 56%, #093f39 100%);
+  box-shadow:
+    inset 0 0 48px rgba(0,0,0,.5),                 /* 桌面暗角 */
+    inset 0 0 0 4px rgba(212,175,55,.32),          /* 金色內圈 */
+    0 0 0 5px #6b4423,                              /* 木框 */
+    0 0 0 8px #3a2412,                              /* 木框暗邊 */
+    0 9px 24px rgba(0,0,0,.55);                     /* 桌子投影 */
   overflow: hidden;
 }
-.center::after { /* felt sheen */
+.center::after { /* felt sheen(上方一抹柔光)*/
   content: ""; position: absolute; inset: 0;
-  background: radial-gradient(40% 30% at 50% 30%, rgba(255,255,255,.06), transparent 70%);
+  background: radial-gradient(46% 34% at 50% 24%, rgba(255,255,255,.08), transparent 70%);
   pointer-events: none;
 }
 /* central 牌山:立體牌牆 + 圈風 + 張數,會隨摸牌變短 */
@@ -379,7 +383,7 @@ body {
   content: ""; position: absolute; left: 0; right: 0; top: 58%; height: 1px;
   background: rgba(0,0,0,.4); box-shadow: 0 1px 0 rgba(255,255,255,.14);
 }
-.wallpile .wall { font-size: 26px; font-weight: 900; color: #fff; text-shadow: var(--glow-cyan); line-height: 1; }
+.wallpile .wall { font-size: 26px; font-weight: 900; color: #fff; text-shadow: var(--glow-gold); line-height: 1; }
 .wallpile .wall small { font-size: 11px; color: #9fb3ab; font-weight: 600; }
 .wallpile .dice { font-size: 16px; letter-spacing: 3px; opacity: .8; }
 
@@ -404,38 +408,42 @@ body {
 /* neat discard rows, built row-by-row in JS (like 神來也 的棄牌區) */
 .river { position: absolute; display: flex; flex-direction: column; gap: 1px; }
 .river-row { display: flex; gap: 1px; }
-.river .tile { width: 22px; height: 31px; }
+.river .tile { width: calc(var(--tile-w) * .6); height: calc(var(--tile-h) * .6); }
 /* 四家棄牌環繞中央牌山,集中成一個正方形牌池 */
 .river.self  { top: calc(50% + 42px);  left: 50%; transform: translateX(-50%); align-items: center; }
 .river.top   { bottom: calc(50% + 42px); left: 50%; transform: translateX(-50%); align-items: center; flex-direction: column-reverse; }
 .river.left  { top: 50%; right: calc(50% + 78px); transform: translateY(-50%); align-items: flex-end; }
 .river.right { top: 50%; left: calc(50% + 78px);  transform: translateY(-50%); align-items: flex-start; }
+/* 明星3缺一:剛打出的那張放大 + 暖金聚光 */
 .river .tile.last {
-  filter: drop-shadow(0 0 5px var(--neon-cyan)) drop-shadow(0 0 5px var(--neon-cyan));
+  filter: drop-shadow(0 0 7px var(--neon-gold)) drop-shadow(0 0 4px var(--neon-gold));
+  transform: scale(1.28); transform-origin: center; z-index: 4;
   animation: discardIn .28s cubic-bezier(.2,.9,.3,1.2);
 }
-@keyframes discardIn { from { opacity: 0; transform: translateY(-14px) scale(1.25); } to { opacity: 1; transform: none; } }
+@keyframes discardIn { from { opacity: 0; transform: translateY(-14px) scale(1.5); } to { opacity: 1; transform: scale(1.28); } }
 .hand .tile.drawn { animation: drawPop .3s cubic-bezier(.2,.9,.3,1.3); }
 @keyframes drawPop { 0% { opacity: 0; transform: translateY(-16px) scale(1.2); } 100% { opacity: 1; transform: none; } }
 
-/* ---------- your area ---------- */
+/* ---------- your area(主角:手牌撐滿整個螢幕寬)---------- */
 .self {
-  display: flex; flex-direction: column; gap: 4px; padding: 2px 4px 4px;
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 0 6px calc(var(--tile-h) * .08);
+  justify-content: flex-end;
 }
-.self-melds { display: flex; gap: 8px; min-height: 0; align-items: center; justify-content: center; flex-wrap: wrap; }
+.self-melds { display: flex; gap: 8px; min-height: 0; align-items: flex-end; justify-content: center; flex-wrap: wrap; }
 .hand {
   display: flex; gap: 0; align-items: flex-end; justify-content: center;
-  min-height: 62px; flex-wrap: nowrap;
+  height: var(--tile-h); flex-wrap: nowrap;
 }
-.hand .tile { cursor: pointer; transition: transform .1s; margin: 0 -1px; }
-.hand .tile.sel { transform: translateY(-12px); filter: drop-shadow(0 3px 3px rgba(0,0,0,.4)) drop-shadow(0 0 7px var(--neon-gold)); }
+.hand .tile { cursor: pointer; transition: transform .1s; margin: 0; }
+.hand .tile.sel { transform: translateY(calc(var(--tile-h) * -.24)); filter: drop-shadow(0 3px 3px rgba(0,0,0,.4)) drop-shadow(0 0 9px var(--neon-gold)); z-index: 2; }
 /* 摸的那張不再空一格,與其他牌一樣緊貼(仍保留彈入動畫) */
 .hand .tile.hintable { filter: drop-shadow(0 2px 2.5px rgba(0,0,0,.4)) drop-shadow(0 0 6px var(--neon-cyan)); }
 
 /* ---------- tiles ---------- */
-/* 牌盒長寬比 = 牌面本來的比例 0.714(較高,像真麻將),避免拉伸變形 */
+/* 牌盒 = 由 --tile-w/--tile-h 驅動(手牌為基準,最大);其餘牌用倍率衍生 */
 .tile {
-  position: relative; width: 40px; height: 56px; flex: 0 0 auto;
+  position: relative; width: var(--tile-w); height: var(--tile-h); flex: 0 0 auto;
 }
 .tile .tface-bg, .tile .tface-sym {
   position: absolute; inset: 0; width: 100%; height: 100%; display: block;
@@ -467,30 +475,49 @@ body {
 .tile.z.white .box { width: 18px; height: 26px; border: 2px solid var(--char-blue); border-radius: 4px; }
 .tile.f { color: var(--neon-red); }
 .tile.f.gent { color: var(--char-green); }
-.tile.meld-tile { width: 33px; height: 46px; }
+.tile.meld-tile { width: calc(var(--tile-w) * .74); height: calc(var(--tile-h) * .74); }
 .meld-group { display: flex; gap: 1px; padding: 2px; border-radius: 8px; background: rgba(0,0,0,.25); }
-.meld-group .tile.rot { transform: rotate(90deg); margin: 0 6px; align-self: flex-end; }
+.meld-group .tile.rot { transform: rotate(90deg); margin: 0 calc(var(--tile-w) * .16); align-self: flex-end; }
 .opp-melds .meld-group .tile.rot { margin: 0 3px; }
 
 /* flowers tray */
 .flowers { display: flex; gap: 2px; }
-.flowers .tile { width: 26px; height: 36px; }
+.flowers .tile { width: calc(var(--tile-w) * .58); height: calc(var(--tile-h) * .58); }
 
-/* ---------- action bar ---------- */
+/* ---------- action bar(明星3缺一式:懸浮在手牌上方的大圓鈕)---------- */
 .actions {
-  display: flex; gap: 10px; justify-content: center; align-items: center;
-  min-height: 4px;
+  display: flex; gap: clamp(10px, 2.4vw, 22px); justify-content: center; align-items: center;
+  min-height: 0;
+  position: absolute; left: 0; right: 0; bottom: calc(var(--tile-h) * 1.12);
+  z-index: 12; pointer-events: none;
 }
+.actions:empty { display: none; }
+.actions > * { pointer-events: auto; }
+/* 大圓鈕:直徑跟著牌大小 */
 .act-btn {
-  border: none; border-radius: 14px; padding: 10px 18px; font-size: 17px; font-weight: 900;
+  --d: clamp(52px, 8.6vw, 82px);
+  width: var(--d); height: var(--d); border-radius: 50%;
+  display: grid; place-items: center; text-align: center; line-height: 1.05;
+  border: none; padding: 0; font-size: calc(var(--d) * .34); font-weight: 900;
   font-family: var(--font); cursor: pointer; color: #fff;
-  background: linear-gradient(180deg, #3a4457, #232a38); border: 1px solid rgba(255,255,255,.12);
+  background: radial-gradient(120% 120% at 50% 22%, #566172, #2a323f 78%);
+  box-shadow: inset 0 2px 0 rgba(255,255,255,.22), inset 0 -4px 8px rgba(0,0,0,.4),
+    0 6px 14px rgba(0,0,0,.5), 0 0 0 3px rgba(255,255,255,.1);
   transition: transform .1s;
 }
-.act-btn:active { transform: scale(.94); }
-.act-btn.hu { background: linear-gradient(180deg, #ffe27a, var(--neon-gold)); color: #3a1d00; box-shadow: var(--glow-gold); font-size: 19px; }
-.act-btn.pon { background: linear-gradient(180deg, #ff5c7c, var(--neon-red)); box-shadow: var(--glow-red); }
-.act-btn.pass { background: #1a2030; color: #9fb3ab; }
+.act-btn:active { transform: scale(.92); }
+.act-btn.hu {
+  --d: clamp(60px, 10vw, 94px);
+  background: radial-gradient(120% 120% at 50% 22%, #fff0b0, var(--neon-gold) 72%);
+  color: #6a3400; box-shadow: inset 0 2px 0 rgba(255,255,255,.6), inset 0 -5px 10px rgba(140,80,0,.4),
+    0 6px 16px rgba(0,0,0,.5), 0 0 22px rgba(255,210,76,.6), 0 0 0 3px rgba(255,255,255,.25);
+}
+.act-btn.pon { background: radial-gradient(120% 120% at 50% 22%, #ff8aa0, var(--neon-red) 74%);
+  box-shadow: inset 0 2px 0 rgba(255,255,255,.35), inset 0 -5px 10px rgba(120,0,20,.4),
+    0 6px 16px rgba(0,0,0,.5), 0 0 18px rgba(255,45,85,.5), 0 0 0 3px rgba(255,255,255,.15); }
+.act-btn.pass { background: radial-gradient(120% 120% at 50% 22%, #3a4250, #20262f 78%); color: #b9c4cf; }
+/* 換三張「已選好」提示鈕仍走長條 */
+.act-btn:disabled { border-radius: 16px; width: auto; height: auto; padding: 10px 18px; font-size: 15px; }
 
 /* top HUD */
 .hud {
