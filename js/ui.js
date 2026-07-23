@@ -83,7 +83,7 @@
     const sp = v.players[p];
     const av = el('div', 'avatar' + (v.turn === p ? ' turn' : '') + (p === v.dealerIndex ? ' dealer' : ''));
     const face = el('div', 'face');
-    face.style.backgroundImage = `url('assets/avatars/a${(p % 6) + 1}.svg?v=25')`;
+    face.style.backgroundImage = `url('assets/avatars/a${(p % 6) + 1}.svg?v=28')`;
     av.appendChild(face);
     const wind = window.MJ.SEAT_WIND[((p - v.dealerIndex) + 4) & 3];
     av.appendChild(el('div', 'wind', WIND[wind]));

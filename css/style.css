@@ -269,6 +269,7 @@ body {
    牌尺寸由 index.html 依螢幕寬算出的 --tile-w/--tile-h 驅動,全部牌都由它衍生。 */
 #app { position: fixed; inset: 0; display: none; overflow: hidden;
   --tile-w: 40px; --tile-h: 56px; --sb-h: clamp(22px, 4.2vh, 30px);
+  --side: clamp(64px, 11.5vw, 96px);   /* 兩側固定寬 → 大海(中央)不會因副露變小 */
   /* 明星3缺一風:海景天空背景(原創 CSS 場景)*/
   background:
     /* 太陽暖光 */
@@ -290,7 +291,7 @@ body {
 .table {
   position: absolute; inset: 0;
   display: grid;
-  grid-template-columns: minmax(0,auto) 1fr minmax(0,auto);
+  grid-template-columns: var(--side) minmax(0,1fr) var(--side);
   grid-template-rows: auto minmax(0,1fr) auto;
   grid-template-areas:
     "top    top    top"
@@ -309,8 +310,11 @@ body {
   position: relative; padding: 11px 9px 0;
 }
 .seat-top { justify-content: flex-start; }
-/* 上家/下家:頭像貼近頂角,牌背往下延伸 */
-.seat-left, .seat-right { justify-content: flex-start; }
+/* 上家/下家:頭像浮在該側頂角(不佔直行高度),牌背整條沿邊往下延伸 */
+.seat-left, .seat-right { justify-content: center; }
+.seat-left .avatar, .seat-right .avatar { position: absolute; top: 2px; z-index: 6; }
+.seat-left .avatar { left: 2px; }
+.seat-right .avatar { right: 2px; }
 /* 明星3缺一式:大圓形角色頭像 */
 .avatar {
   position: relative;
@@ -360,11 +364,16 @@ body {
 
 /* concealed tile backs count for opponents */
 .backs { display: flex; gap: 1px 2px; flex-wrap: wrap; justify-content: center; max-width: 100%; }
-/* 上家/下家(兩側)手牌沿邊直立排成一直行,騰出中間大海 */
+/* 上家/下家(兩側)手牌 = 單一直行的疊牌(絕不換第二行);張數多就疊緊一點 */
 .seat-left .backs, .seat-right .backs {
-  flex-direction: column; flex-wrap: wrap; align-content: center; gap: 1px; max-height: 46vh;
+  flex-direction: column; flex-wrap: nowrap; align-items: center; gap: 0; max-height: none;
 }
-.seat-left .tb, .seat-right .tb { width: calc(var(--tile-w) * .5); height: calc(var(--tile-w) * .36); }
+.seat-left .tb, .seat-right .tb {
+  width: calc(var(--tile-w) * .58); height: calc(var(--tile-w) * .4);
+  margin-top: calc(var(--tile-w) * -.31);              /* 疊起來 → 一整行擠得下 16 張 */
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.28), 0 -1px 1px rgba(0,0,0,.3);
+}
+.seat-left .backs .tb:first-child, .seat-right .backs .tb:first-child { margin-top: 0; }
 /* 牌背:做出「兩層牌疊在一起」的立體感(頂面亮 + 疊層縫 + 側牆) */
 .tb {
   width: calc(var(--tile-w) * .38); height: calc(var(--tile-h) * .38); border-radius: 2px 2px 3px 3px; position: relative;
@@ -386,7 +395,7 @@ body {
 
 /* ---------- center pond(明星3缺一式:淺褐木邊 + 棗紅氈桌)---------- */
 .center {
-  position: relative; margin: 5px; border-radius: 34px; z-index: 1;
+  position: relative; margin: 2px; border-radius: 30px; z-index: 1;
   background:
     radial-gradient(74% 76% at 50% 42%, #8a3a2f 0%, #6e2820 52%, #4e1a14 100%);
   box-shadow:
@@ -403,17 +412,18 @@ body {
   background: radial-gradient(46% 34% at 50% 24%, rgba(255,255,255,.08), transparent 70%);
   pointer-events: none;
 }
-/* central 牌山:立體牌牆 + 圈風 + 張數,會隨摸牌變短 */
+/* 圈風/剩張/骰子 → 移到右上角的小資訊列(不再佔中央大海) */
 .wallpile {
-  position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
-  display: flex; flex-direction: column; align-items: center; gap: 3px; z-index: 3;
-  pointer-events: none;
+  position: absolute; top: 7px; right: 9px; left: auto; transform: none; z-index: 7;
+  display: flex; flex-direction: row; align-items: center; gap: 8px;
+  background: rgba(8,10,14,.62); padding: 4px 11px; border-radius: 999px;
+  border: 1px solid rgba(220,190,120,.35); pointer-events: none;
 }
 .wallpile .rw {
-  font-size: 12px; color: var(--neon-gold); font-weight: 800; letter-spacing: .2em;
-  background: rgba(0,0,0,.4); padding: 2px 10px; border-radius: 999px;
+  font-size: clamp(10px, 1.5vw, 13px); color: var(--neon-gold); font-weight: 800; letter-spacing: .04em;
+  background: none; padding: 0;
 }
-.wallpile .stack { display: flex; gap: 1px; align-items: flex-end; height: 17px; }
+.wallpile .stack { display: none; }
 /* 牌山一墩 = 兩張疊高的牌背:頂面亮 + 疊層縫 + 底部陰影(立體) */
 .wseg {
   position: relative; width: 10px; height: 19px; border-radius: 1px 1px 2px 2px;
@@ -424,12 +434,13 @@ body {
   content: ""; position: absolute; left: 0; right: 0; top: 58%; height: 1px;
   background: rgba(0,0,0,.4); box-shadow: 0 1px 0 rgba(255,255,255,.14);
 }
-.wallpile .wall { font-size: 26px; font-weight: 900; color: #fff; text-shadow: var(--glow-gold); line-height: 1; }
-.wallpile .wall small { font-size: 11px; color: #9fb3ab; font-weight: 600; }
-.wallpile .dice { font-size: 16px; letter-spacing: 3px; opacity: .8; }
+.wallpile .wall { font-size: clamp(14px, 2.3vw, 20px); font-weight: 900; color: #fff; text-shadow: var(--glow-gold); line-height: 1; }
+.wallpile .wall small { font-size: 10px; color: #cdbb92; font-weight: 700; }
+.wallpile .dice { font-size: clamp(12px, 1.9vw, 16px); letter-spacing: 2px; opacity: .9; }
 
-/* 四面立體牌山,矩形圍住大海 */
-.mwall { position: absolute; display: flex; gap: 1px; z-index: 1; }
+/* 四面裝飾牌山已隱藏 → 整個大海全部拿來放棄牌 */
+.mwall { display: none; }
+.mwall-legacy { position: absolute; display: flex; gap: 1px; z-index: 1; }
 .mwall.top    { top: 6px;    left: 50%; transform: translateX(-50%); flex-direction: row; }
 .mwall.bottom { bottom: 6px; left: 50%; transform: translateX(-50%); flex-direction: row; }
 .mwall.left   { left: 8px;   top: 50%; transform: translateY(-50%); flex-direction: column; }
@@ -449,12 +460,13 @@ body {
 /* neat discard rows, built row-by-row in JS (like 神來也 的棄牌區) */
 .river { position: absolute; display: flex; flex-direction: column; gap: 1px; }
 .river-row { display: flex; gap: 1px; }
-.river .tile { width: calc(var(--tile-w) * .66); height: calc(var(--tile-h) * .66); }
-/* 四家棄牌環繞中央牌山,集中成一個正方形牌池 */
-.river.self  { top: calc(50% + 42px);  left: 50%; transform: translateX(-50%); align-items: center; }
-.river.top   { bottom: calc(50% + 42px); left: 50%; transform: translateX(-50%); align-items: center; flex-direction: column-reverse; }
-.river.left  { top: 50%; right: calc(50% + 78px); transform: translateY(-50%); align-items: flex-end; }
-.river.right { top: 50%; left: calc(50% + 78px);  transform: translateY(-50%); align-items: flex-start; }
+/* 打出去的牌:清楚可辨的大小,四家攤在整個大海上,每張都看得一清二楚 */
+.river .tile { width: calc(var(--tile-w) * .56); height: calc(var(--tile-h) * .56); }
+/* 四家棄牌繞中央小縫成風車狀,往外生長鋪滿整個大海 */
+.river.self  { top: calc(50% + 6px);   left: 50%; transform: translateX(-50%); align-items: center; }
+.river.top   { bottom: calc(50% + 6px); left: 50%; transform: translateX(-50%); align-items: center; flex-direction: column-reverse; }
+.river.left  { top: 50%; right: calc(50% + 14px); transform: translateY(-50%); align-items: flex-end; }
+.river.right { top: 50%; left: calc(50% + 14px);  transform: translateY(-50%); align-items: flex-start; }
 /* 明星3缺一:剛打出的那張放大 + 暖金聚光 */
 .river .tile.last {
   filter: drop-shadow(0 0 7px var(--neon-gold)) drop-shadow(0 0 4px var(--neon-gold));
