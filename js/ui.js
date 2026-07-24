@@ -133,8 +133,8 @@
     wrap.appendChild(backs);
     if (sp.melds && sp.melds.length) {
       const mm = el('div', 'opp-melds'); sp.melds.forEach((m) => mm.appendChild(meldGroup(m)));
-      // 側家副露翻開接在牌背同一直行「前段」(頭像正下方,空間不夠時沉下去的是牌背不是副露)
-      if (pos === 1 || pos === 3) backs.insertBefore(mm, backs.firstChild);
+      // 側家副露翻開接在牌背直行「尾端」(靠桌面這頭,完整可見);牌多往對方那頭長,藏進頭像後也無妨
+      if (pos === 1 || pos === 3) backs.appendChild(mm);
       else wrap.appendChild(mm);
     }
     // 補花:縮小成一小排放在旁邊(不擠壓牌背)
@@ -260,8 +260,8 @@
       backs.style.setProperty('--side-hand-x', `${offset.toFixed(2)}px`);
     };
 
-    // 側家整條牌列(牌背+行內副露)置中在「頭像下緣~桌底」的可用帶;
-    // 超出時縮副露(但保住可讀下限 .30),再超出就讓牌列兩端各溢一點。
+    // 側家整條牌列(牌背+行內副露):下端固定在安全線(不靠近自家手牌),
+    // 牌多往「對方那頭」(上方)長,牌背藏進頭像後面也無妨;副露在尾端永遠可見。
     const fitSideRail = (seat) => {
       const backs = seat.querySelector('.backs');
       const avatar = seat.querySelector('.avatar');
@@ -270,20 +270,21 @@
       if (melds) melds.style.setProperty('--opp-tile-scale', '.42');
       const seatRect = seat.getBoundingClientRect();
       const avatarRect = avatar.getBoundingClientRect();
+      const bandBottom = seatRect.height - 6;                       // 安全線:牌列最低到這
       const bandTop = Math.max(0, avatarRect.bottom + 6 - seatRect.top);
-      const bandBottom = seatRect.height - 6;
-      const room = Math.max(40, bandBottom - bandTop);
+      const room = Math.max(40, bandBottom - bandTop);              // 頭像以下的無遮蔽空間
       if (melds) {
         const meldsH = melds.offsetHeight;
-        if (backs.offsetHeight > room && meldsH > 0) {
+        // 只有整條連「藏進頭像後」都放不下(超過整個側欄高)才縮副露
+        if (backs.offsetHeight > bandBottom && meldsH > 0) {
           const backsOnly = backs.offsetHeight - meldsH;
-          const scale = .42 * Math.max(30, room - backsOnly) / meldsH;
+          const scale = .42 * Math.max(30, bandBottom - backsOnly) / meldsH;
           melds.style.setProperty('--opp-tile-scale', Math.min(.42, Math.max(.30, scale)).toFixed(4));
         }
       }
-      // 置中在可用帶;放不下→頂端貼齊頭像下緣(副露在前段保持可見,牌背尾端沉到手牌後)
       const railH = backs.offsetHeight;
-      const center = (railH > room) ? bandTop + railH / 2 : (bandTop + bandBottom) / 2;
+      // 放得進無遮蔽帶→帶內置中;放不進→下端貼安全線、往上長(上端進頭像後面)
+      const center = (railH > room) ? bandBottom - railH / 2 : (bandTop + bandBottom) / 2;
       backs.style.top = center.toFixed(1) + 'px';
     };
 
@@ -308,20 +309,19 @@
     const topFlowers = topSeat.querySelector('.opp-flowers');
 
     if (topMelds) {
+      // 對家副露放牌背「右邊」的空地(那整片是空的),保持大小,塞不下才縮
       topMelds.style.setProperty('--opp-tile-scale', '.40');
-      const leftAvatarRect = leftSeat.querySelector('.avatar').getBoundingClientRect();
-      const leftEdge = Math.max(viewportLeft, leftAvatarRect.right + edgeGap);
-      const rightEdge = topBacksRect.left - edgeGap;
-      const available = Math.max(1, rightEdge - leftEdge);
+      const leftEdge = topBacksRect.right + edgeGap;
+      const available = Math.max(1, viewportRight - leftEdge);
       if (topMelds.offsetWidth > available) {
-        const scale = Math.max(.16, .40 * available / topMelds.offsetWidth);
+        const scale = Math.max(.24, .40 * available / topMelds.offsetWidth);
         topMelds.style.setProperty('--opp-tile-scale', scale.toFixed(4));
       }
-      const targetLeft = Math.max(leftEdge, rightEdge - topMelds.offsetWidth);
-      topMelds.style.left = `${(targetLeft - topSeatRect.left).toFixed(2)}px`;
+      topMelds.style.left = `${(leftEdge - topSeatRect.left).toFixed(2)}px`;
     }
     if (topFlowers) {
-      const leftEdge = Math.max(farRight + edgeGap, topBacksRect.right + edgeGap);
+      const meldsRight = topMelds ? topMelds.getBoundingClientRect().right : 0;
+      const leftEdge = Math.max(farRight + edgeGap, topBacksRect.right + edgeGap, meldsRight + edgeGap);
       const targetLeft = Math.min(viewportRight - topFlowers.offsetWidth, leftEdge);
       topFlowers.style.right = 'auto';
       topFlowers.style.left = `${(targetLeft - topSeatRect.left).toFixed(2)}px`;

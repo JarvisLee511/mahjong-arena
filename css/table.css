@@ -241,7 +241,7 @@
   flex-direction: column;
   align-items: center;
   gap: 3px;
-  margin: 0 0 6px;   /* 副露在牌列前段,下方接牌背 */
+  margin: 6px 0 0;   /* 副露在牌列尾端(靠桌面這頭),上方接牌背 */
   transform: none;
 }
 
