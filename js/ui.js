@@ -133,8 +133,8 @@
     wrap.appendChild(backs);
     if (sp.melds && sp.melds.length) {
       const mm = el('div', 'opp-melds'); sp.melds.forEach((m) => mm.appendChild(meldGroup(m)));
-      // 側家副露直接接在牌背同一直行的尾端(不再另闢區域);對家仍由 fitTableGeometry 排在同一列
-      if (pos === 1 || pos === 3) backs.appendChild(mm);
+      // 側家副露翻開接在牌背同一直行「前段」(頭像正下方,空間不夠時沉下去的是牌背不是副露)
+      if (pos === 1 || pos === 3) backs.insertBefore(mm, backs.firstChild);
       else wrap.appendChild(mm);
     }
     // 補花:縮小成一小排放在旁邊(不擠壓牌背)
@@ -260,30 +260,37 @@
       backs.style.setProperty('--side-hand-x', `${offset.toFixed(2)}px`);
     };
 
-    positionBacks(leftBacks, leftSeat, 'left');
-    positionBacks(rightBacks, rightSeat, 'right');
-
-    // 側家整條牌列(牌背+副露)垂直置中:超出「頭像以下、桌底以上」的空間時只縮副露
-    const fitSideMelds = (seat) => {
-      const melds = seat.querySelector('.opp-melds');
+    // 側家整條牌列(牌背+行內副露)置中在「頭像下緣~桌底」的可用帶;
+    // 超出時縮副露(但保住可讀下限 .30),再超出就讓牌列兩端各溢一點。
+    const fitSideRail = (seat) => {
       const backs = seat.querySelector('.backs');
       const avatar = seat.querySelector('.avatar');
-      if (!melds || !backs || !avatar) return;
-      melds.style.setProperty('--opp-tile-scale', '.30');
+      if (!backs || !avatar) return;
+      const melds = seat.querySelector('.opp-melds');
+      if (melds) melds.style.setProperty('--opp-tile-scale', '.42');
       const seatRect = seat.getBoundingClientRect();
       const avatarRect = avatar.getBoundingClientRect();
-      const centerY = seatRect.top + seatRect.height / 2;
-      const room = 2 * Math.max(0, Math.min(centerY - avatarRect.bottom - 6, seatRect.bottom - centerY - 6));
-      const meldsH = melds.offsetHeight;
-      if (backs.offsetHeight > room && meldsH > 0) {
-        const backsOnly = backs.offsetHeight - meldsH;
-        const scale = .30 * Math.max(20, room - backsOnly) / meldsH;
-        melds.style.setProperty('--opp-tile-scale', Math.min(.30, Math.max(.16, scale)).toFixed(4));
+      const bandTop = Math.max(0, avatarRect.bottom + 6 - seatRect.top);
+      const bandBottom = seatRect.height - 6;
+      const room = Math.max(40, bandBottom - bandTop);
+      if (melds) {
+        const meldsH = melds.offsetHeight;
+        if (backs.offsetHeight > room && meldsH > 0) {
+          const backsOnly = backs.offsetHeight - meldsH;
+          const scale = .42 * Math.max(30, room - backsOnly) / meldsH;
+          melds.style.setProperty('--opp-tile-scale', Math.min(.42, Math.max(.30, scale)).toFixed(4));
+        }
       }
+      // 置中在可用帶;放不下→頂端貼齊頭像下緣(副露在前段保持可見,牌背尾端沉到手牌後)
+      const railH = backs.offsetHeight;
+      const center = (railH > room) ? bandTop + railH / 2 : (bandTop + bandBottom) / 2;
+      backs.style.top = center.toFixed(1) + 'px';
     };
 
-    fitSideMelds(leftSeat);
-    fitSideMelds(rightSeat);
+    fitSideRail(leftSeat);
+    fitSideRail(rightSeat);
+    positionBacks(leftBacks, leftSeat, 'left');
+    positionBacks(rightBacks, rightSeat, 'right');
 
     const topSeat = document.querySelector('.seat-top');
     const topBacks = topSeat && topSeat.querySelector('.backs');
@@ -301,13 +308,13 @@
     const topFlowers = topSeat.querySelector('.opp-flowers');
 
     if (topMelds) {
-      topMelds.style.setProperty('--opp-tile-scale', '.30');
+      topMelds.style.setProperty('--opp-tile-scale', '.40');
       const leftAvatarRect = leftSeat.querySelector('.avatar').getBoundingClientRect();
       const leftEdge = Math.max(viewportLeft, leftAvatarRect.right + edgeGap);
       const rightEdge = topBacksRect.left - edgeGap;
       const available = Math.max(1, rightEdge - leftEdge);
       if (topMelds.offsetWidth > available) {
-        const scale = Math.max(.16, .30 * available / topMelds.offsetWidth);
+        const scale = Math.max(.16, .40 * available / topMelds.offsetWidth);
         topMelds.style.setProperty('--opp-tile-scale', scale.toFixed(4));
       }
       const targetLeft = Math.max(leftEdge, rightEdge - topMelds.offsetWidth);

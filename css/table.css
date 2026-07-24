@@ -203,7 +203,9 @@
 }
 
 .table > .seat-left .backs .tb:first-child,
-.table > .seat-right .backs .tb:first-child { margin-top: 0; }
+.table > .seat-right .backs .tb:first-child,
+.table > .seat-left .backs .opp-melds + .tb,
+.table > .seat-right .backs .opp-melds + .tb { margin-top: 0; }
 
 /* Melds are anchored instead of contributing to grid track sizing. */
 .seat-top .opp-melds {
@@ -221,8 +223,8 @@
 }
 
 .seat-top .opp-melds .tile.meld-tile {
-  width: calc(var(--tile-w) * var(--opp-tile-scale, .30));
-  height: calc(var(--tile-h) * var(--opp-tile-scale, .30));
+  width: calc(var(--tile-w) * var(--opp-tile-scale, .40));
+  height: calc(var(--tile-h) * var(--opp-tile-scale, .40));
 }
 
 .seat-top .opp-flowers {
@@ -239,26 +241,41 @@
   flex-direction: column;
   align-items: center;
   gap: 3px;
-  margin-top: 6px;
+  margin: 0 0 6px;   /* 副露在牌列前段,下方接牌背 */
   transform: none;
 }
 
+/* 副露牌組=直行往下續排(一張接一張,像翻開攤在自己牌前) */
 .table > .seat-left .opp-melds .meld-group,
 .table > .seat-right .opp-melds .meld-group,
 .table > .seat-left .backs .opp-melds .meld-group,
 .table > .seat-right .backs .opp-melds .meld-group {
   display: flex;
-  gap: 0;
+  flex-direction: column;
+  gap: 1px;
   margin: 0;
   padding: 1px;
   transform: none;
 }
 
+/* 側家副露牌=橫躺(跟牌背同方向)翻開:牌盒寬高互換,牌面轉 90° 塞回去 */
 .table > .seat-left .opp-melds .tile,
 .table > .seat-right .opp-melds .tile {
-  width: calc(var(--tile-w) * var(--opp-tile-scale, .30));
-  height: calc(var(--tile-h) * var(--opp-tile-scale, .30));
+  width: calc(var(--tile-h) * var(--opp-tile-scale, .42));
+  height: calc(var(--tile-w) * var(--opp-tile-scale, .42));
 }
+
+.table > .seat-left .opp-melds .tile .tface-sym,
+.table > .seat-right .opp-melds .tile .tface-sym {
+  top: 50%;
+  left: 50%;
+  width: calc(var(--tile-w) * var(--opp-tile-scale, .42) * .90);
+  height: calc(var(--tile-h) * var(--opp-tile-scale, .42) * .90);
+  padding: 3%;
+}
+
+.table > .seat-left .opp-melds .tile .tface-sym { transform: translate(-50%, -50%) rotate(90deg); }
+.table > .seat-right .opp-melds .tile .tface-sym { transform: translate(-50%, -50%) rotate(-90deg); }
 
 .table .opp-melds .meld-group {
   padding: 2px;
