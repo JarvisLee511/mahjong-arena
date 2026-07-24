@@ -175,23 +175,24 @@
   border-radius: 3px;
 }
 
+/* 側家整條牌列(牌背+行內副露)垂直置中貼齊自己那側桌邊,不再往下延伸到擋住自家手牌 */
 .table > .seat-left .backs,
 .table > .seat-right .backs {
   position: absolute;
-  top: calc(var(--avatar-size) + 24px);
+  top: 50%;
   max-height: none;
 }
 
 .table > .seat-left .backs {
   left: var(--side-hand-x, calc(var(--seat-side) + clamp(28px, 4.5vw, 68px)));
-  transform: translateX(-50%) rotate(var(--table-side-angle));
-  transform-origin: 50% 0;
+  transform: translate(-50%, -50%) rotate(var(--table-side-angle));
+  transform-origin: 50% 50%;
 }
 
 .table > .seat-right .backs {
   right: var(--side-hand-x, calc(var(--seat-side) + clamp(28px, 4.5vw, 68px)));
-  transform: translateX(50%) rotate(var(--table-side-angle-neg));
-  transform-origin: 50% 0;
+  transform: translate(50%, -50%) rotate(var(--table-side-angle-neg));
+  transform-origin: 50% 50%;
 }
 
 .table > .seat-left .tb,
@@ -230,21 +231,22 @@
   bottom: calc(3px - var(--table-shift));
 }
 
-.table > .seat-left .opp-melds,
-.table > .seat-right .opp-melds {
-  position: absolute;
-  bottom: 5px;
+/* 側家副露 = 行內接在牌背直行尾端(renderOpp 直接塞進 .backs),不再另闢角落區域 */
+.table > .seat-left .backs .opp-melds,
+.table > .seat-right .backs .opp-melds {
+  position: static;
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 3px;
+  margin-top: 6px;
   transform: none;
 }
 
-.table > .seat-left .opp-melds { left: 4px; }
-.table > .seat-right .opp-melds { right: 4px; }
-
 .table > .seat-left .opp-melds .meld-group,
-.table > .seat-right .opp-melds .meld-group {
+.table > .seat-right .opp-melds .meld-group,
+.table > .seat-left .backs .opp-melds .meld-group,
+.table > .seat-right .backs .opp-melds .meld-group {
   display: flex;
   gap: 0;
   margin: 0;
@@ -266,15 +268,17 @@
   box-shadow: 0 2px 5px rgba(8, 29, 31, .24), inset 0 1px 0 rgba(255, 255, 255, .08);
 }
 
+/* 側家補花:掛在頭像正下方(遠離自家手牌區) */
 .table > .seat-left .opp-flowers,
 .table > .seat-right .opp-flowers {
   position: absolute;
-  bottom: calc(13px - var(--table-shift));
+  top: calc(var(--avatar-size) + clamp(14px, 3vh, 26px));
+  bottom: auto;
   max-width: calc(var(--seat-side) - 6px);
 }
 
-.table > .seat-left .opp-flowers { right: calc(3px - clamp(4px, 1.8vw, 26px)); }
-.table > .seat-right .opp-flowers { left: calc(3px - clamp(4px, 1.8vw, 26px)); }
+.table > .seat-left .opp-flowers { left: max(12px, 3vw); right: auto; }
+.table > .seat-right .opp-flowers { right: max(12px, 3vw); left: auto; }
 
 .table .opp-flowers .tile {
   width: calc(var(--tile-w) * .34);
@@ -920,9 +924,6 @@
 
   .table > .seat-left .avatar,
   .table > .seat-right .avatar { top: 5px; }
-
-  .table > .seat-left .backs,
-  .table > .seat-right .backs { top: calc(var(--avatar-size) + 8px); }
 
   .center {
     width: calc(100% - 12px);

@@ -22,10 +22,28 @@
     return d;
   }
   function backEl() { return el('div', 'tb'); }
+  function facedownEl() { return el('div', 'tile meld-tile facedown'); }
   function meldGroup(m) {
     const g = el('div', 'meld-group');
+    if (m.hidden) {                                  // 對手暗槓:四張全蓋(內容已在 view 層遮蔽)
+      for (let i = 0; i < 4; i++) g.appendChild(facedownEl());
+      return g;
+    }
+    if (m.type === 'kong' && m.subtype === 'an') {   // 自家暗槓:蓋-開-開-蓋,自己記得槓了什麼
+      g.appendChild(facedownEl());
+      g.appendChild(tileEl(m.tiles[0], 'meld-tile'));
+      g.appendChild(tileEl(m.tiles[0], 'meld-tile'));
+      g.appendChild(facedownEl());
+      return g;
+    }
     m.tiles.forEach((t) => g.appendChild(tileEl(t, 'meld-tile')));   // 全部同方向
     return g;
+  }
+  // 連線/單機 view 層遮蔽:別家的暗槓不送牌面內容(防偷看)
+  function maskMelds(melds, hide) {
+    if (!hide || !melds || !melds.length) return melds;
+    return melds.map((m) => (m.type === 'kong' && m.subtype === 'an')
+      ? { type: 'kong', subtype: 'an', hidden: true, tiles: [] } : m);
   }
 
   // ============================================================
@@ -46,7 +64,7 @@
       $('#wallCount').innerHTML = '換三張<small> 美麻</small>';
       $('#roundWind').textContent = `第 ${v.swap ? v.swap.round : 1} / 2 輪 · 各選 3 張傳下家`;
     } else {
-      $('#wallCount').innerHTML = v.wall + '<small> 張</small>';
+      $('#wallCount').innerHTML = (v.wallLive ?? v.wall) + '<small> 張</small>';   // 顯示可摸張數(扣王牌16)
       $('#roundWind').textContent = WIND[v.roundWind] + '風圈' + (v.streak ? ` · 連${v.streak}` : '');
     }
     renderWalls(v);
@@ -93,8 +111,15 @@
     const sp = v.players[p];
     const av = el('div', 'avatar' + (v.turn === p ? ' turn' : '') + (p === v.dealerIndex ? ' dealer' : ''));
     const face = el('div', 'face');
-    face.style.backgroundImage = `url('assets/avatars/a${(p % 6) + 1}.svg?v=28')`;
+    const charAv = window.MJChars && sp.ai ? window.MJChars.avatarOf(sp.name) : null;
+    face.style.backgroundImage = `url('assets/avatars/a${charAv || (p % 6) + 1}.svg?v=28')`;
     av.appendChild(face);
+    // 角色表情:登記在 MJChars,重繪時掛回(徽章動畫自行淡出)
+    const mood = window.MJChars && sp.ai ? window.MJChars.moodOf(p) : null;
+    if (mood) {
+      av.classList.add('mood-' + mood);
+      av.appendChild(el('div', 'mood-badge', window.MJChars.moodEmoji(mood)));
+    }
     const wind = window.MJ.SEAT_WIND[((p - v.dealerIndex) + 4) & 3];
     av.appendChild(el('div', 'wind', WIND[wind]));
     av.appendChild(el('div', 'nm', sp.name + (sp.ai ? ' · AI' : '')));
@@ -107,7 +132,10 @@
     for (let i = 0; i < sp.handCount; i++) backs.appendChild(backEl());
     wrap.appendChild(backs);
     if (sp.melds && sp.melds.length) {
-      const mm = el('div', 'opp-melds'); sp.melds.forEach((m) => mm.appendChild(meldGroup(m))); wrap.appendChild(mm);
+      const mm = el('div', 'opp-melds'); sp.melds.forEach((m) => mm.appendChild(meldGroup(m)));
+      // 側家副露直接接在牌背同一直行的尾端(不再另闢區域);對家仍由 fitTableGeometry 排在同一列
+      if (pos === 1 || pos === 3) backs.appendChild(mm);
+      else wrap.appendChild(mm);
     }
     // 補花:縮小成一小排放在旁邊(不擠壓牌背)
     if (sp.flowers && sp.flowers.length) {
@@ -235,17 +263,22 @@
     positionBacks(leftBacks, leftSeat, 'left');
     positionBacks(rightBacks, rightSeat, 'right');
 
+    // 側家整條牌列(牌背+副露)垂直置中:超出「頭像以下、桌底以上」的空間時只縮副露
     const fitSideMelds = (seat) => {
       const melds = seat.querySelector('.opp-melds');
+      const backs = seat.querySelector('.backs');
       const avatar = seat.querySelector('.avatar');
-      if (!melds || !avatar) return;
+      if (!melds || !backs || !avatar) return;
       melds.style.setProperty('--opp-tile-scale', '.30');
       const seatRect = seat.getBoundingClientRect();
       const avatarRect = avatar.getBoundingClientRect();
-      const available = Math.max(1, seatRect.bottom - avatarRect.bottom - 16);
-      if (melds.offsetHeight > available) {
-        const scale = Math.max(.18, .30 * available / melds.offsetHeight);
-        melds.style.setProperty('--opp-tile-scale', scale.toFixed(4));
+      const centerY = seatRect.top + seatRect.height / 2;
+      const room = 2 * Math.max(0, Math.min(centerY - avatarRect.bottom - 6, seatRect.bottom - centerY - 6));
+      const meldsH = melds.offsetHeight;
+      if (backs.offsetHeight > room && meldsH > 0) {
+        const backsOnly = backs.offsetHeight - meldsH;
+        const scale = .30 * Math.max(20, room - backsOnly) / meldsH;
+        melds.style.setProperty('--opp-tile-scale', Math.min(.30, Math.max(.16, scale)).toFixed(4));
       }
     };
 
@@ -449,6 +482,58 @@
 
   // ---------- flourishes ------------------------------------
   function toast(txt) { const t = el('div', 'toast', txt); $('#app').appendChild(t); setTimeout(() => t.remove(), 1200); }
+
+  // 明星三缺一式全螢幕毛筆大字:碰/槓/吃/聽 砸到螢幕上 + 震動
+  const FX_STYLE = {
+    pung: { word: '碰', color: '#ff5d47', shake: true },
+    kong: { word: '槓', color: '#c07bff', shake: true },
+    chow: { word: '吃', color: '#39d0ff', shake: false },
+    ready: { word: '聽', color: '#ffd24c', shake: true },
+  };
+  function actionFX(kind, who) {
+    const s = FX_STYLE[kind]; if (!s) return;
+    const wrap = el('div', 'bigfx');
+    const w = el('div', 'bigfx-word', s.word);
+    w.style.setProperty('--fx-c', s.color);
+    wrap.appendChild(w);
+    if (who) wrap.appendChild(el('div', 'bigfx-who', who));
+    $('#app').appendChild(wrap);
+    if (s.shake) {
+      const table = document.querySelector('.table');
+      if (table) { table.classList.add('shake'); setTimeout(() => table.classList.remove('shake'), 600); }
+    }
+    setTimeout(() => wrap.remove(), 900);
+  }
+
+  // 開局逐張發牌動畫:牌背從中央牌牆飛向四家(純表演 overlay)
+  function dealAnim(cb) {
+    const app = $('#app');
+    const cx = innerWidth / 2, cy = innerHeight / 2;
+    const targets = [
+      { x: cx, y: innerHeight - 70, rot: 0 },   // 自家
+      { x: innerWidth - 80, y: cy, rot: 90 },   // 下家(右)
+      { x: cx, y: 80, rot: 0 },                 // 對家
+      { x: 80, y: cy, rot: -90 },               // 上家(左)
+    ];
+    const perSeat = 8, gap = 34;
+    for (let i = 0; i < perSeat * 4; i++) {
+      const seat = i & 3, n = i >> 2;
+      const tg = targets[seat];
+      const spread = (n - perSeat / 2) * 13;
+      const jx = (seat % 2) ? 0 : spread, jy = (seat % 2) ? spread : 0;
+      const t = el('div', 'deal-tile');
+      app.appendChild(t);
+      t.animate([
+        { transform: `translate(${cx}px, ${cy}px) scale(.55) rotate(0deg)`, opacity: 0 },
+        { transform: `translate(${cx}px, ${cy}px) scale(1) rotate(0deg)`, opacity: 1, offset: .18 },
+        { transform: `translate(${tg.x + jx}px, ${tg.y + jy}px) scale(.9) rotate(${tg.rot}deg)`, opacity: 1, offset: .92 },
+        { transform: `translate(${tg.x + jx}px, ${tg.y + jy}px) scale(.9) rotate(${tg.rot}deg)`, opacity: 0 },
+      ], { duration: 380, delay: i * gap, easing: 'cubic-bezier(.3,.7,.4,1)', fill: 'both' }).onfinish = () => t.remove();
+      setTimeout(() => t.remove(), 380 + i * gap + 800);   // 保險:分頁切背景動畫中斷也一定清掉
+      if (i % 4 === 0) setTimeout(() => MJSound.fx('deal'), i * gap);
+    }
+    setTimeout(() => cb && cb(), perSeat * 4 * gap + 460);
+  }
   function rollDice() { const f = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅']; $('#dice').textContent = f[(Math.random() * 6) | 0] + f[(Math.random() * 6) | 0]; }
   function burst() {
     const cx = innerWidth / 2, cy = innerHeight / 2;
@@ -492,13 +577,15 @@
     setTimeout(() => { wrap.classList.remove('on'); wrap.innerHTML = ''; cb && cb(); }, 1500);
   }
 
-  function showResult(v, onAgain, canAgain) {
+  function showResult(v, onAgain, canAgain, opts) {
+    const animate = !(opts && opts.noAnim);
+    let taiEl = null;
     const r = v.result; const card = $('#resultCard'); card.innerHTML = '';
     const body = el('div', 'rc-body');    // 可捲動內容
     const foot = el('div', 'rc-foot');    // 固定按鈕(永遠看得到)
     if (r.type === 'draw') {
       body.appendChild(el('h2', '', '流局'));
-      body.appendChild(el('div', 'taitotal', '牌牆摸完,無人胡牌'));
+      body.appendChild(el('div', 'taitotal', '摸到只剩 16 張王牌,無人胡牌 — 留局'));
     } else {
       const w0 = r.winners[0];
       const isMultiHu = !r.selfDraw && r.winners.length > 1;
@@ -518,7 +605,8 @@
         body.appendChild(list);
       } else {
         const tt = el('div', 'taitotal');
-        tt.append(document.createTextNode(v.players[w0.player].name + ' '), el('b', '', w0.tai), document.createTextNode(' 台'));
+        taiEl = el('b', '', animate ? '0' : String(w0.tai));
+        tt.append(document.createTextNode(v.players[w0.player].name + ' '), taiEl, document.createTextNode(' 台'));
         body.appendChild(tt);
       }
       if (r.winHand && !isMultiHu) {
@@ -531,7 +619,22 @@
         body.appendChild(wh);
       }
       if (!isMultiHu) {
-        const bd = el('div', 'bd'); w0.breakdown.forEach((b) => bd.appendChild(el('span', '', b.name + ' ' + b.tai))); body.appendChild(bd);
+        // 明星三缺一式台數唱名:一條一條跳出來 + 台數往上跳
+        const bd = el('div', 'bd');
+        w0.breakdown.forEach((b, i) => {
+          const s = el('span', animate ? 'call' : '', b.name + ' ' + b.tai);
+          if (animate) s.style.animationDelay = (350 + i * 300) + 'ms';
+          bd.appendChild(s);
+        });
+        body.appendChild(bd);
+        if (animate && taiEl) {
+          let acc = 0;
+          w0.breakdown.forEach((b, i) => setTimeout(() => {
+            if (!taiEl.isConnected) return;
+            acc += b.tai; taiEl.textContent = acc; MJSound.fx('tick');
+            if (i === w0.breakdown.length - 1) { taiEl.textContent = String(w0.tai); MJSound.fx('hu'); }
+          }, 350 + i * 300));
+        }
       }
     }
     const sb = el('div', 'taitotal'); sb.style.fontSize = '15px'; sb.style.color = '#cfe';
@@ -601,7 +704,7 @@
       card.appendChild(rw);
     });
     const back = el('button', 'btn', '返回結算'); back.style.marginTop = '12px';
-    back.addEventListener('click', () => showResult(v, onAgain, canAgain));
+    back.addEventListener('click', () => showResult(v, onAgain, canAgain, { noAnim: true }));
     card.appendChild(back);
   }
   const hideResult = () => $('#result').classList.remove('on');
@@ -628,6 +731,41 @@
         setTimeout(() => { ov.classList.remove('on'); cb && cb(); }, 1300);
       }
     }, 90);
+  }
+
+  // ⑬ 抽風決莊:四家各抽一張風牌,抽到東風做莊(perm[seat]='z1'..'z4')
+  function drawWinds(names, perm, dealerSeat, cb) {
+    let ov = $('#windDraw');
+    if (!ov) { ov = el('div'); ov.id = 'windDraw'; document.body.appendChild(ov); }
+    ov.innerHTML = '';
+    const box = el('div', 'wind-box');
+    box.appendChild(el('div', 'wind-title', '抽風決莊'));
+    const row = el('div', 'wind-row');
+    const cards = [];
+    for (let s = 0; s < 4; s++) {
+      const c = el('div', 'wind-card');
+      c.appendChild(el('div', 'wind-name', names[s]));
+      const tile = el('div', 'wind-tile');
+      c.appendChild(tile);
+      row.appendChild(c);
+      cards.push({ c, tile, seat: s });
+    }
+    box.appendChild(row);
+    const say = el('div', 'wind-say', '每家抽一張風牌…');
+    box.appendChild(say);
+    ov.appendChild(box);
+    ov.classList.add('on');
+    cards.forEach((k, i) => setTimeout(() => {
+      k.tile.classList.add('flip');
+      k.tile.textContent = WIND[perm[k.seat]];
+      if (perm[k.seat] === 'z1') k.c.classList.add('east');
+      MJSound.fx('tick');
+      if (i === 3) {
+        say.innerHTML = '';
+        say.append(el('b', '', names[dealerSeat]), document.createTextNode(' 抽到東風,做莊!'));
+        setTimeout(() => { ov.classList.remove('on'); cb && cb(); }, 1400);
+      }
+    }, 450 + i * 420));
   }
 
   // ⑩ 喊話泡泡(依螢幕座位定位)
@@ -660,13 +798,12 @@
   }
 
   // expose renderer for online.js + solo
-  window.MJView = { renderView, toast, rollDice, rollDealer, burst, playWinAnim, showResult, hideResult, clearSelection, showBubble, nicknames, tileEl, refitTable, prepareTableLayout, WIND };
+  window.MJView = { renderView, toast, rollDice, rollDealer, drawWinds, burst, playWinAnim, showResult, hideResult, clearSelection, showBubble, nicknames, tileEl, refitTable, prepareTableLayout, actionFX, dealAnim, maskMelds, WIND };
 
   // ============================================================
   //  SINGLE-PLAYER CONTROLLER
   // ============================================================
   const NAMES = ['你', '阿明', '秀蓮', '土豆伯'];
-  const TAUNTS = ['等你很久了', '快一點啦', '手氣真好齁', '穩住', '唉呦', '嘿嘿', '這張安啦'];
   let cfg = { rule: 'std', lvl: 'normal', len: 'round', stake: '30/10' };
   const roundTarget = () => (cfg.len === 'game' ? 16 : 4);   // 一將16莊 / 一圈4莊
   const stakeVals = () => { const [b, t] = (cfg.stake || '30/10').split('/').map(Number); return { base: b, tai: t }; };  // 底/台點數
@@ -700,7 +837,7 @@
     const me = G.players[0];
     const v = {
       mySeat: 0, phase: G.phase, turn: G.turn, dealerIndex: snap.dealerIndex,
-      roundWind, wall: snap.wall, streak,
+      roundWind, wall: snap.wall, wallLive: snap.wallLive, streak,
       wallStart: snap.wallStart,
       wallDrawnFront: snap.wallDrawnFront,
       wallDrawnBack: snap.wallDrawnBack,
@@ -708,7 +845,9 @@
       lastDiscard: snap.lastDiscard,
       players: [0, 1, 2, 3].map((p) => ({
         seat: p, name: NAMES[p], ai: p !== 0, score: scores[p],
-        handCount: G.players[p].hand.length, melds: G.players[p].melds, flowers: G.players[p].flowers,
+        handCount: G.players[p].hand.length,
+        melds: MJView.maskMelds(G.players[p].melds, p !== 0 && G.phase !== 'over'),
+        flowers: G.players[p].flowers,
         discards: G.players[p].discards,
       })),
       myHand: me.hand.slice(),
@@ -776,15 +915,29 @@
     saveSoloSession();
   }
 
+  // 明星三缺一式催促:輪到你太久沒出牌,AI 角色出聲催
+  let hurryTimer = null;
+  function clearHurry() { if (hurryTimer) { clearTimeout(hurryTimer); hurryTimer = null; } }
+  function armHurry() {
+    clearHurry();
+    if (autopilot) return;
+    hurryTimer = setTimeout(() => {
+      if (!G || G.phase !== 'act' || G.turn !== 0) return;
+      charSay(1 + ((Math.random() * 3) | 0), 'hurry', 1, 'think');
+      MJSound.fx('tick');
+      armHurry();   // 還不出牌就繼續催
+    }, 14000);
+  }
+
   function soloAdvance() {
     soloRender();
     if (!G) return;
-    if (G.phase === 'over') return soloFinish();
+    if (G.phase === 'over') { clearHurry(); return soloFinish(); }
     if (G.phase === 'swap') { busy = false; if (autopilot && !G.swapReady(0)) setTimeout(soloAutoStep, curDelay() * 0.5); return; }
     if (G.phase === 'act') {
-      if (G.turn === 0) { busy = false; if (autopilot) setTimeout(soloAutoStep, curDelay() * 0.5); }
-      else { busy = true; setTimeout(soloAI, curDelay()); }
-    } else if (G.phase === 'claim') soloClaims();
+      if (G.turn === 0) { busy = false; armHurry(); if (autopilot) setTimeout(soloAutoStep, curDelay() * 0.5); }
+      else { clearHurry(); busy = true; setTimeout(soloAI, curDelay()); }
+    } else if (G.phase === 'claim') { clearHurry(); soloClaims(); }
   }
   // 託管:電腦代打人類(seat 0)的回合/吃碰/換牌(含自動胡)
   function soloAutoStep() {
@@ -801,7 +954,6 @@
     const a = window.MJAI.act(G, seat);
     if (a.type === 'discard') MJSound.fx('discard');
     G.applyAct(seat, a);
-    if (a.type === 'discard' && Math.random() < 0.08) MJView.showBubble(seat, TAUNTS[(Math.random() * TAUNTS.length) | 0]);
     soloAdvance();
   }
   function soloClaims() {
@@ -835,23 +987,47 @@
     const wp = G.players[r.winners[0].player];
     r.winHand = { melds: wp.melds, hand: wp.hand.slice() };
     if (dealerKept) streak++; else { dealerIndex = (dealerIndex + 1) & 3; streak = 0; dealerPasses++; }
+    // 角色戲:贏家嗆聲、放槍/輸家跳腳
+    const w0p = r.winners[0].player;
+    if (w0p !== 0) {
+      charSay(w0p, r.selfDraw ? 'tsumo' : (r.loser === 0 ? 'dealInYou' : 'win'), 1, 'smug', 4500);
+    } else {
+      charSay(1 + ((Math.random() * 3) | 0), 'humanWin', 1, 'angry', 4000);   // 你胡了,抽一位 AI 哀號
+    }
+    if (r.loser != null && r.loser !== 0 && r.loser !== w0p) charSay(r.loser, 'lostBig', 0.8, 'angry', 4500);
     MJView.playWinAnim(r.selfDraw ? 'tsumo' : 'hu', finishUp);
+  }
+
+  // ⑬ 抽風決莊 → 擲骰 → 開局(單機)
+  function windsThenStart() {
+    const perm = window.MJ.shuffle(['z1', 'z2', 'z3', 'z4']);
+    dealerIndex = perm.indexOf('z1');
+    MJView.drawWinds(NAMES, perm, dealerIndex, () => MJView.rollDealer(NAMES[dealerIndex], startHand));
   }
 
   // 開新的一圈:重置分數/莊家/戰績
   function newRound() {
-    scores = [0, 0, 0, 0]; dealerIndex = 0; streak = 0; dealerPasses = 0;
+    scores = [0, 0, 0, 0]; streak = 0; dealerPasses = 0;
     sessionStats = [0, 1, 2, 3].map(() => ({ hu: 0, tsumo: 0, dealIn: 0 }));
-    MJView.rollDealer(NAMES[dealerIndex], startHand);
+    windsThenStart();
+  }
+
+  // 角色反應:seat 為 AI 才有戲;mood 一定演,泡泡照機率抽
+  function charSay(seat, ev, prob, mood, ms) {
+    if (seat === 0 || !window.MJChars) return;
+    if (mood) window.MJChars.setMood(seat, mood, ms);
+    if (Math.random() > (prob == null ? 1 : prob)) return;
+    const txt = window.MJChars.line(NAMES[seat], ev);
+    if (txt) MJView.showBubble(seat, txt);   // 單機 mySeat=0 → 螢幕位置=座位
   }
 
   function onGameEvent(type, p) {
-    if (type === 'discard') { MJSound.tile(p.tile, window.MJ.tileName(p.tile)); }
-    else if (type === 'pung') { MJView.toast(NAMES[p.player] + ' 碰!'); MJSound.fx('pung'); MJSound.voice('pung'); }
-    else if (type === 'kong') { MJView.toast(NAMES[p.player] + ' 槓!'); MJSound.fx('kong'); MJSound.voice('kong'); }
-    else if (type === 'chow') { MJView.toast(NAMES[p.player] + ' 吃'); MJSound.fx('chow'); MJSound.voice('chow'); }
+    if (type === 'discard') { MJSound.tile(p.tile, window.MJ.tileName(p.tile)); charSay(p.player, 'chatter', 0.07); }
+    else if (type === 'pung') { MJView.actionFX('pung', NAMES[p.player] + ' 碰!'); MJSound.fx('pung'); MJSound.voice('pung'); charSay(p.player, 'pung', 0.6, 'happy'); }
+    else if (type === 'kong') { MJView.actionFX('kong', NAMES[p.player] + ' 槓!'); MJSound.fx('kong'); MJSound.voice('kong'); charSay(p.player, 'kong', 0.7, 'happy'); }
+    else if (type === 'chow') { MJView.actionFX('chow', NAMES[p.player] + ' 吃'); MJSound.fx('chow'); MJSound.voice('chow'); charSay(p.player, 'chow', 0.4); }
     else if (type === 'swap') { MJView.toast('換牌完成 · 第' + p.round + '輪'); MJSound.fx('chow'); }
-    else if (type === 'ready') { MJView.toast((NAMES[p.player] || '') + (p.kind === 'tian' ? ' 天聽!' : ' 地聽!')); MJSound.fx('tick'); }
+    else if (type === 'ready') { MJView.actionFX('ready', (NAMES[p.player] || '') + (p.kind === 'tian' ? ' 天聽!' : ' 地聽!')); MJSound.fx('tick'); charSay(p.player, 'ready', 0.8, 'smug'); }
     else if (type === 'win') { MJSound.fx('hu'); MJSound.voice(p.selfDraw ? 'tsumo' : 'hu'); }
   }
 
@@ -859,17 +1035,17 @@
     busy = false; soloHint = null; MJView.clearSelection();
     roundWind = (cfg.len === 'game') ? window.MJ.SEAT_WIND[Math.min(3, Math.floor(dealerPasses / 4))] : 'z1';  // 一將輪圈風
     G = new Game({ dealerIndex, roundWind, streak, aiLevel: cfg.lvl, swapMode: cfg.rule === 'swap', allowMultiHu: true, onEvent: onGameEvent });
-    MJView.rollDice(); soloRender(); MJSound.fx('deal');
-    setTimeout(soloAdvance, 480);
+    MJView.rollDice(); soloRender();
+    MJView.dealAnim(soloAdvance);   // ⑫ 逐張發牌儀式,跑完才開打
   }
 
   function startSolo() {
-    scores = [0, 0, 0, 0]; dealerIndex = 0; streak = 0; roundWind = 'z1'; dealerPasses = 0;
+    scores = [0, 0, 0, 0]; streak = 0; roundWind = 'z1'; dealerPasses = 0;
     sessionStats = [0, 1, 2, 3].map(() => ({ hu: 0, tsumo: 0, dealIn: 0 }));
     MJSound.bgmStop(); if (window.__lobbyFX) window.__lobbyFX.stop();
     enterSoloTable();
     const mb = $('#btnMusic'); if (!mb || mb.dataset.on !== '0') MJSound.bgmStart('game');   // 遊戲中中國風輕音樂
-    MJView.rollDealer(NAMES[dealerIndex], startHand);   // ⑧ 擲骰決莊開場
+    windsThenStart();   // ⑬ 抽風決莊 → ⑧ 擲骰 → 開局
   }
 
   // ---------- lobby wiring ----------------------------------
@@ -912,6 +1088,24 @@
   }
   $('#btnEmote').addEventListener('click', (e) => { e.stopPropagation(); $('#emotePanel').classList.toggle('on'); });
   document.addEventListener('click', (e) => { const p = $('#emotePanel'); if (p && p.classList.contains('on') && !p.contains(e.target) && e.target.id !== 'btnEmote') p.classList.remove('on'); });
+
+  // ⚙ 音量設定面板:三通道分開調(電腦報牌 / 背景音樂 / 自錄語音),放開滑桿試聽
+  (function buildSettingsPanel() {
+    const panel = $('#settingsPanel'); const btn = $('#btnGear');
+    if (!panel || !btn) return;
+    const v = MJSound.volumes();
+    const bind = (id, key, demo) => {
+      const s = $('#' + id); if (!s) return;
+      s.value = Math.round(v[key] * 100);
+      s.addEventListener('input', () => MJSound.setVolume(key, s.value / 100));
+      if (demo) s.addEventListener('change', demo);
+    };
+    bind('volTts', 'tts', () => MJSound.tile('m5', '五萬'));
+    bind('volBgm', 'bgm', null);                       // 音樂在播就即時聽得出來
+    bind('volVoice', 'voice', () => MJSound.voice('pung'));
+    btn.addEventListener('click', (e) => { e.stopPropagation(); panel.classList.toggle('on'); $('#emotePanel').classList.remove('on'); });
+    document.addEventListener('click', (e) => { if (panel.classList.contains('on') && !panel.contains(e.target) && e.target.id !== 'btnGear') panel.classList.remove('on'); });
+  })();
 
   // lobby background music: autoplay needs a gesture, so kick on first tap;
   // a 🎵 toggle lets the player mute it. Music stops once a game begins.

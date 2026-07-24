@@ -62,12 +62,36 @@
   const BOOSTED_RECORDED_CLAIMS = new Set(['pung', 'kong', 'chow', 'hu', 'tsumo']);
   const RECORDED_VOICE_VOLUME = 0.33;
   const TILE_CLIP_GAIN = 0.65;
-  const TILE_TTS_VOLUME = 0.08;
+  const TILE_TTS_VOLUME = 0.45;   // 明星三缺一式全量報牌:TTS 要聽得見(自錄音檔仍優先且不受影響)
+  const BOOST_BASE = 4.5;
   const clips = {};            // key -> HTMLAudioElement
   const boostedSources = new WeakMap();
   const tileSources = new WeakMap();
   let boostedGain = null, boostedLimiter = null, tileGain = null;
   let voicesTried = false;
+
+  // ---- 三通道音量(⚙設定面板):tts=電腦報牌 / bgm=背景音樂 / voice=自錄吃碰槓胡 ----
+  // 滑桿 0..1;0.5=原本音量,1=兩倍(有上限),0=靜音。存 localStorage。
+  const VOL_KEY = 'mj_volumes';
+  const vol = { tts: 0.5, bgm: 0.5, voice: 0.5 };
+  try {
+    const s = JSON.parse(localStorage.getItem(VOL_KEY) || 'null');
+    if (s) for (const k in vol) if (typeof s[k] === 'number') vol[k] = Math.max(0, Math.min(1, s[k]));
+  } catch (e) {}
+  const mul = (k) => vol[k] * 2;
+  const capped = (v) => Math.max(0, Math.min(1, v));
+  function applyVolumes() {
+    if (tileGain) tileGain.gain.value = TILE_CLIP_GAIN * mul('tts');
+    if (boostedGain) boostedGain.gain.value = BOOST_BASE * mul('voice');
+    if (bgmAudio && bgmKind && BGM_VOL[bgmKind] != null) bgmAudio.volume = capped(BGM_VOL[bgmKind] * mul('bgm'));
+    if (bgmGain && bgmKind && SYNTH_VOL[bgmKind] != null) bgmGain.gain.value = SYNTH_VOL[bgmKind] * mul('bgm');
+  }
+  function setVolume(key, v) {
+    if (!(key in vol)) return;
+    vol[key] = Math.max(0, Math.min(1, v));
+    try { localStorage.setItem(VOL_KEY, JSON.stringify(vol)); } catch (e) {}
+    applyVolumes();
+  }
 
   // Claim calls need more presence than tile names, but raw 3x gain clips loudly.
   // Keep the gain on its own bus and catch peaks before they reach the speakers.
@@ -77,7 +101,7 @@
     try {
       if (!boostedGain) {
         boostedGain = a.createGain();
-        boostedGain.gain.value = 4.5;
+        boostedGain.gain.value = BOOST_BASE * mul('voice');
         boostedLimiter = a.createDynamicsCompressor();
         boostedLimiter.threshold.value = -6;
         boostedLimiter.knee.value = 0;
@@ -103,7 +127,7 @@
     try {
       if (!tileGain) {
         tileGain = a.createGain();
-        tileGain.gain.value = TILE_CLIP_GAIN;
+        tileGain.gain.value = TILE_CLIP_GAIN * mul('tts');
         tileGain.connect(a.destination);
       }
       if (!tileSources.has(audio)) {
@@ -118,31 +142,43 @@
   }
   // load only the files listed in assets/audio/manifest.json → no 404 spam.
   // manifest is a JSON array of filenames, e.g. ["pung.m4a","hu.mp3"].
+  // ⚠️ file:// 直開時 fetch 被 CORS 擋 → 退回內建清單(<audio> 元素不受此限),
+  //    自錄的吃碰槓胡/報牌才不會無聲變 TTS。缺檔由 onerror 移除,照樣回 TTS。
+  const DEFAULT_AUDIO_FILES = [
+    'pung.m4a', 'kong.m4a', 'chow.m4a', 'hu.m4a', 'tsumo.m4a',
+    ...['m', 'p', 's'].flatMap((s) => Array.from({ length: 9 }, (_, i) => s + (i + 1) + '.m4a')),
+    ...Array.from({ length: 7 }, (_, i) => 'z' + (i + 1) + '.m4a'),
+  ];
+  function loadClips(files) {
+    (files || []).forEach((f) => {
+      const key = String(f).replace(/\.[^.]+$/, '');
+      if (clips[key]) return;
+      const a = new Audio('assets/audio/' + f); a.preload = 'auto';
+      const isTile = /^(?:[mps][1-9]|z[1-7])$/.test(key);
+      a.volume = BOOSTED_RECORDED_CLAIMS.has(key) || isTile ? 1 : RECORDED_VOICE_VOLUME;
+      a.onerror = () => { delete clips[key]; };
+      clips[key] = a;
+    });
+  }
   function preloadVoices() {
     if (voicesTried) return; voicesTried = true;
     fetch('assets/audio/manifest.json', { cache: 'no-store' })
-      .then((r) => (r.ok ? r.json() : []))
-      .then((files) => {
-        (files || []).forEach((f) => {
-          const key = String(f).replace(/\.[^.]+$/, '');
-          const a = new Audio('assets/audio/' + f); a.preload = 'auto';
-          const isTile = /^(?:[mps][1-9]|z[1-7])$/.test(key);
-          a.volume = BOOSTED_RECORDED_CLAIMS.has(key) || isTile ? 1 : RECORDED_VOICE_VOLUME;
-          clips[key] = a;
-        });
-      })
-      .catch(() => {});
+      .then((r) => (r.ok ? r.json() : DEFAULT_AUDIO_FILES))
+      .then(loadClips)
+      .catch(() => loadClips(DEFAULT_AUDIO_FILES));
   }
   function voice(key) {
     if (!enabled) return;
     const a = clips[key];
     if (a) {
       try {
-        if (BOOSTED_RECORDED_CLAIMS.has(key)) routeBoostedVoice(a);
+        if (BOOSTED_RECORDED_CLAIMS.has(key)) {
+          if (!routeBoostedVoice(a)) a.volume = capped(mul('voice'));   // WebAudio 不可用時退回元素音量
+        } else a.volume = capped(RECORDED_VOICE_VOLUME * mul('voice'));
         a.currentTime = 0; a.play(); return;
       } catch (e) {}
     }
-    say(VOICE[key] || key);    // fallback TTS keeps its normal volume
+    say(VOICE[key] || key, capped(0.9 * mul('voice')));    // fallback TTS 跟著自錄語音滑桿
   }
   // 報牌:打出的每張牌念出牌名。有 assets/audio/<code>.* 音檔就播,否則國語 TTS。
   function tileVoice(code, spoken) {
@@ -150,11 +186,11 @@
     const a = clips[code];
     if (a) {
       try {
-        routeTileVoice(a);
+        if (!routeTileVoice(a)) a.volume = capped(TILE_CLIP_GAIN * mul('tts'));
         a.currentTime = 0; a.play(); return;
       } catch (e) {}
     }
-    if (spoken) say(spoken, TILE_TTS_VOLUME);
+    if (spoken) say(spoken, capped(TILE_TTS_VOLUME * mul('tts')));
   }
 
   // Chinese TTS: 報牌 / 碰 / 槓 / 胡啦
@@ -168,7 +204,7 @@
     if (!enabled || !window.speechSynthesis) return;
     try {
       const u = new SpeechSynthesisUtterance(text);
-      u.lang = lang; u.rate = 1.05; u.pitch = 1.0; u.volume = volume ?? 0.9;
+      u.lang = lang; u.rate = 1.05; u.pitch = 1.0; u.volume = volume ?? capped(0.9 * mul('tts'));
       const v = voices.find((x) => /zh[-_]?(TW|HK|CN)/i.test(x.lang));
       if (v) u.voice = v;
       speechSynthesis.cancel();
@@ -180,6 +216,8 @@
   // 'lobby' = 戲劇賭場氛圍(賭神那種感覺,原創);'game' = 中國風輕音樂(音量壓低於人聲)。
   // 兩條音軌在載入腳本時先建立，手機上的第一次手勢可直接 play，不需等待 fetch。
   const BGM_FILES = { lobby: 'lobby.mp3', game: 'game.mp3' };
+  const BGM_VOL = { lobby: 0.5, game: 0.081 };     // 音檔基準音量(滑桿 0.5 = 此值)
+  const SYNTH_VOL = { lobby: 0.16, game: 0.023 };  // WebAudio 合成備援基準
   const bgmTracks = {};
   if (typeof Audio !== 'undefined') {
     Object.keys(BGM_FILES).forEach((kind) => {
@@ -235,7 +273,7 @@
     if (!bgmOn || bgmKind !== kind || generation !== bgmGeneration) return;
     const a = ac(); if (!a) return;
     bgmGain = a.createGain();
-    bgmGain.gain.value = kind === 'game' ? 0.023 : 0.16;   // 遊戲中極淡,遠低於吃碰人聲
+    bgmGain.gain.value = SYNTH_VOL[kind] * mul('bgm');   // 遊戲中極淡,遠低於吃碰人聲
     bgmGain.connect(a.destination);
     (kind === 'game' ? gameLoop : lobbyLoop)(a, generation);
   }
@@ -247,7 +285,7 @@
     const audio = bgmTracks[kind];
     if (!audio) { startSynth(kind, generation); return; }
     bgmAudio = audio;
-    bgmAudio.volume = kind === 'game' ? 0.081 : 0.5;   // 中國風再降,更淡
+    bgmAudio.volume = capped(BGM_VOL[kind] * mul('bgm'));   // 中國風再降,更淡
     try { bgmAudio.currentTime = 0; } catch (e) {}
     let playback;
     try { playback = bgmAudio.play(); }
@@ -273,6 +311,7 @@
   const MJSound = {
     fx(name) { if (FX[name]) FX[name](); },
     say, voice, tile: tileVoice, preloadVoices,
+    setVolume, volumes: () => Object.assign({}, vol),
     bgmStart, bgmStop,
     unlock() { ac(); preloadVoices(); },         // call on first user gesture
     set enabled(v) { enabled = v; if (!v) { bgmStop(); if (window.speechSynthesis) speechSynthesis.cancel(); } },

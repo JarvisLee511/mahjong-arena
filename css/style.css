@@ -1109,7 +1109,151 @@ body {
   filter: drop-shadow(0 2px 3px rgba(0,0,0,.4));
 }
 
+/* ============================================================
+   明星三缺一式:全螢幕大字 / 角色表情 / 發牌動畫 / 台數唱名
+   ============================================================ */
+/* 碰/槓/吃/聽 毛筆大字砸出來 */
+.bigfx { position: absolute; inset: 0; z-index: 40; display: grid; place-items: center; pointer-events: none; }
+.bigfx-word {
+  /* 楷書優先:LXGW WenKai TC 有完整繁體(槓/聽),Ma Shan Zheng 缺繁體字 */
+  font-family: "LXGW WenKai TC", "Ma Shan Zheng", "Microsoft JhengHei", serif; font-weight: 700;
+  font-size: clamp(90px, 26vmin, 210px); line-height: 1;
+  color: #fff6df;
+  -webkit-text-stroke: 5px var(--fx-c, #ffd24c);
+  paint-order: stroke fill;
+  text-shadow: 0 0 26px var(--fx-c, #ffd24c), 0 0 70px var(--fx-c, #ffd24c), 0 9px 0 rgba(0, 0, 0, .4);
+  animation: bigfxSlam .85s cubic-bezier(.2, 1.5, .35, 1) both;
+}
+.bigfx-who {
+  position: absolute; top: calc(50% + clamp(52px, 15vmin, 118px)); left: 50%; transform: translateX(-50%);
+  font-size: clamp(14px, 3vmin, 22px); font-weight: 900; color: #fff; white-space: nowrap;
+  background: rgba(0, 0, 0, .62); padding: 3px 16px; border-radius: 999px; letter-spacing: .12em;
+  animation: bigfxWho .85s ease both;
+}
+@keyframes bigfxSlam {
+  0% { transform: scale(3.2) rotate(-10deg); opacity: 0; }
+  22% { transform: scale(1) rotate(2deg); opacity: 1; }
+  34% { transform: scale(1.12) rotate(-1deg); }
+  46% { transform: scale(1); }
+  78% { opacity: 1; }
+  100% { transform: scale(.94); opacity: 0; }
+}
+@keyframes bigfxWho { 0%, 18% { opacity: 0; } 30% { opacity: 1; } 82% { opacity: 1; } 100% { opacity: 0; } }
+
+/* 角色表情:徽章 + 臉部動作(徽章動畫自行淡出,不需重繪清理) */
+.avatar .mood-badge {
+  position: absolute; top: -10px; left: -12px; z-index: 9;
+  font-size: clamp(18px, 4.5vmin, 32px);
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, .5));
+  animation: moodPop 2.6s cubic-bezier(.2, 1.4, .4, 1) both;
+}
+@keyframes moodPop {
+  0% { transform: scale(0); opacity: 0; }
+  12% { transform: scale(1.25); opacity: 1; }
+  20% { transform: scale(1); }
+  80% { opacity: 1; }
+  100% { transform: scale(.8); opacity: 0; }
+}
+.avatar.mood-happy .face, .avatar.mood-smug .face { animation: moodBounce .45s ease 3; }
+.avatar.mood-angry .face { animation: moodShake .3s linear 4; border-color: #ff6b6b; }
+.avatar.mood-think .face { animation: moodBounce .9s ease 2; }
+@keyframes moodBounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+@keyframes moodShake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px) rotate(-2deg); }
+  75% { transform: translateX(4px) rotate(2deg); }
+}
+
+/* ⑫ 開局發牌:牌背從牌牆飛向四家 */
+.deal-tile {
+  position: fixed; left: -13px; top: -19px; width: 26px; height: 38px; z-index: 230; pointer-events: none;
+  border-radius: 4px; border: 1px solid #0e5069;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, .24), transparent 18% 76%, rgba(5, 40, 58, .25)),
+    linear-gradient(180deg, #52d2d8 0 10%, #2298bd 12% 58%, #17648f 100%);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, .4);
+}
+
+/* 結算台數唱名:一條一條蹦出來 */
+.bd span.call { opacity: 0; animation: callPop .4s cubic-bezier(.2, 1.4, .4, 1) forwards; }
+@keyframes callPop {
+  0% { opacity: 0; transform: scale(.4) translateY(10px); }
+  100% { opacity: 1; transform: none; }
+}
+
+/* ============================================================
+   規則層:暗槓蓋牌 / 抽風決莊 / ⚙音量設定
+   ============================================================ */
+/* 暗槓蓋牌(對手全蓋;自家蓋-開-開-蓋) */
+.tile.facedown {
+  border-radius: 4px; border: 1px solid #0e5069;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, .24), transparent 18% 76%, rgba(5, 40, 58, .25)),
+    linear-gradient(180deg, #52d2d8 0 10%, #2298bd 12% 58%, #17648f 100%);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, .35);
+}
+
+/* ⑬ 抽風決莊 overlay */
+#windDraw {
+  position: fixed; inset: 0; z-index: 220; display: none;
+  align-items: center; justify-content: center;
+  background: radial-gradient(50% 50% at 50% 45%, rgba(212, 175, 55, .12), rgba(0, 0, 0, .86));
+}
+#windDraw.on { display: flex; }
+.wind-box { text-align: center; }
+.wind-title {
+  font-family: "Ma Shan Zheng", "Microsoft JhengHei", serif; letter-spacing: .2em;
+  font-size: clamp(24px, 6vmin, 40px); color: var(--neon-gold); text-shadow: var(--glow-gold);
+  margin-bottom: 14px;
+}
+.wind-row { display: flex; gap: clamp(10px, 3vmin, 26px); justify-content: center; }
+.wind-card { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.wind-name {
+  font-size: clamp(12px, 2.6vmin, 16px); font-weight: 800; color: #cfe;
+  max-width: 92px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.wind-tile {
+  width: clamp(44px, 9vmin, 64px); height: clamp(62px, 12.6vmin, 90px);
+  border-radius: 6px; display: grid; place-items: center; color: transparent;
+  font-family: "LXGW WenKai TC", "Microsoft JhengHei", serif; font-weight: 700;
+  font-size: clamp(26px, 6vmin, 44px);
+  border: 1px solid #0e5069;
+  background: linear-gradient(180deg, #52d2d8 0 10%, #2298bd 12% 58%, #17648f 100%);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, .4);
+}
+.wind-tile.flip {
+  color: #16324a; background: #f7f3e6; border-color: #c9c0a6;
+  animation: windFlip .4s ease;
+}
+@keyframes windFlip { 0% { transform: rotateY(90deg); } 100% { transform: none; } }
+.wind-card.east .wind-tile.flip {
+  color: #a2201a; border-color: var(--neon-gold);
+  box-shadow: 0 0 18px rgba(255, 210, 76, .85), 0 4px 8px rgba(0, 0, 0, .4);
+}
+.wind-card.east .wind-name { color: var(--neon-gold); }
+.wind-say { margin-top: 16px; font-size: clamp(15px, 3.4vmin, 24px); font-weight: 900; color: #fff; }
+.wind-say b { color: var(--gold); text-shadow: var(--glow-gold); font-size: 1.25em; }
+
+/* ⚙ 音量設定面板 */
+#settingsPanel {
+  position: absolute; top: 48px; left: 8px; z-index: 30; display: none;
+  flex-direction: column; gap: 10px; width: min(300px, 80vw); padding: 12px 14px;
+  background: rgba(12, 12, 14, .95); border: 1px solid rgba(212, 175, 55, .35);
+  border-radius: 12px; box-shadow: 0 12px 30px rgba(0, 0, 0, .6);
+}
+#settingsPanel.on { display: flex; }
+#settingsPanel .set-title { font-weight: 900; color: var(--gold); font-size: 14px; letter-spacing: .1em; }
+#settingsPanel .set-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  font-size: 13px; font-weight: 700; color: #dfe9e4;
+}
+#settingsPanel input[type=range] { flex: 1 1 auto; max-width: 160px; accent-color: #d4af37; }
+#settingsPanel .set-hint { font-size: 11px; color: #9ab0a6; }
+
 @media (prefers-reduced-motion: reduce) {
   .toast, #rotate .phone { animation: none; }
   #winanim .rays { display: none; }
+  .bigfx-word, .bigfx-who, .mood-badge, .bd span.call { animation-duration: .01s; }
+  .avatar.mood-happy .face, .avatar.mood-smug .face, .avatar.mood-angry .face, .avatar.mood-think .face { animation: none; }
+  .deal-tile { display: none; }
 }

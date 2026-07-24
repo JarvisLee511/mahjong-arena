@@ -32,6 +32,7 @@
       this.streak = opts.streak || 0;        // 連莊數
       this.allowMultiHu = opts.allowMultiHu ?? true; // 一炮多響
       this.swapMode = opts.swapMode || false;        // 換三張(美麻)
+      this.deadWall = opts.deadWall ?? 16;           // 王牌:牌牆留最後16張不摸=流局
       this.onEvent = opts.onEvent || null;
       this._aiLevel = opts.aiLevel || 'normal';
       this.reset();
@@ -66,12 +67,14 @@
       this.wallStart = this.wallCount();
     }
 
-    // draw from front (normal) or back (replacement)
+    // draw from front (normal) or back (replacement)。
+    // 王牌:剩最後16張不摸(發牌階段最少也剩72張,不會誤觸)→ null=流局
     _draw(fromBack) {
-      if (this.front > this.back) return null; // 流局
+      if (this.wallCount() <= this.deadWall) return null; // 流局
       return fromBack ? this.wall[this.back--] : this.wall[this.front++];
     }
     wallCount() { return Math.max(0, this.back - this.front + 1); }
+    liveWallCount() { return Math.max(0, this.wallCount() - this.deadWall); }
 
     _deal() {
       // 16 each, dealer 17 (dealer's extra is the opening draw)
@@ -413,7 +416,7 @@
     _advanceAfterDiscard(from) {
       this.firstGoAround = this.firstGoAround && (((from + 1) & 3) !== this.dealerIndex ? true : false);
       // (天/地/人胡 only valid on the very first uninterrupted go-around)
-      if (this.wallCount() <= 0) { this._drawGame(); return; }
+      if (this.liveWallCount() <= 0) { this._drawGame(); return; }
       this.turn = NEXT(from);
       this._drawForTurn(false);
     }
@@ -441,7 +444,7 @@
         const ctx = {
           seatIndex: p, dealerIndex: this.dealerIndex, roundWind: this.roundWind,
           selfDraw, byRobKong: !!robKong, byKongDraw: this.kongPending && selfDraw,
-          byLastTile: this.wallCount() <= 0,
+          byLastTile: this.liveWallCount() <= 0,   // 摸走最後一張活牌=海底/河底
           flowers: pl.flowers, exposedMelds: pl.melds,
           winTile: selfDraw ? pl._drawn : winTile,
           isFirstDraw: this.firstGoAround, streak: this.streak,
@@ -474,6 +477,7 @@
         streak: this.streak,
         allowMultiHu: this.allowMultiHu,
         swapMode: this.swapMode,
+        deadWall: this.deadWall,
         aiLevel: this._aiLevel,
         wall: this.wall,
         front: this.front,
@@ -515,6 +519,7 @@
       game.streak = state.streak;
       game.allowMultiHu = state.allowMultiHu !== false;
       game.swapMode = !!state.swapMode;
+      game.deadWall = Number.isFinite(state.deadWall) ? state.deadWall : 16;
       game._aiLevel = state.aiLevel || 'normal';
       game.wall = state.wall;
       game.front = state.front;
@@ -553,6 +558,7 @@
         phase: this.phase, turn: this.turn, dealerIndex: this.dealerIndex,
         swapRound: this.swapRound,
         roundWind: this.roundWind, wall: this.wallCount(),
+        wallLive: this.liveWallCount(),   // 可摸張數(扣王牌16),UI 顯示用
         wallStart: this.wallStart,
         wallDrawnFront: Math.max(0, this.front - this.wallStartFront),
         wallDrawnBack: Math.max(0, (this.wall.length - 1 - this.back) - this.wallStartBack),

@@ -298,7 +298,7 @@ test('online claim timeout passes remaining seats without stale-state access', (
     MJGame: { Game },
     MJ,
     MJSolo: { cfg: { len: 'round', rule: 'classic', stake: 1 } },
-    MJView: { renderView() {}, WIND: {} },
+    MJView: { renderView() {}, WIND: {}, maskMelds: (melds) => melds },
     MJNet: { send() {}, to() {} },
     MJAI: {},
   };

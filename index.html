@@ -10,9 +10,9 @@
 <meta http-equiv="Cache-Control" content="no-store">
 <title>該死的賭徒們 · Damn Gamblers</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&family=Ma+Shan+Zheng&family=Zhi+Mang+Xing&family=Bebas+Neue&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=39">
-<link rel="stylesheet" href="css/table.css?v=12">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&family=Ma+Shan+Zheng&family=Zhi+Mang+Xing&family=LXGW+WenKai+TC:wght@700&family=Bebas+Neue&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css?v=41">
+<link rel="stylesheet" href="css/table.css?v=13">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="manifest" href="manifest.json">
 </head>
@@ -79,6 +79,7 @@
   <div class="table">
     <div class="hud">
       <button class="icon-btn" id="btnLeave" title="離開">✕</button>
+      <button class="icon-btn" id="btnGear" title="設定">⚙</button>
       <span class="pill" id="selfInfo"></span>
       <span class="pill" id="pillCode" style="display:none"></span>
       <button class="icon-btn" id="btnSound" title="音效">♪</button>
@@ -86,6 +87,13 @@
       <button class="icon-btn" id="btnEmote" title="喊話">…</button>
     </div>
     <div id="emotePanel"></div>
+    <div id="settingsPanel">
+      <div class="set-title">音量設定</div>
+      <label class="set-row">電腦報牌<input type="range" id="volTts" min="0" max="100"></label>
+      <label class="set-row">背景音樂<input type="range" id="volBgm" min="0" max="100"></label>
+      <label class="set-row">自錄語音<input type="range" id="volVoice" min="0" max="100"></label>
+      <div class="set-hint">自錄語音=你錄的吃/碰/槓/胡/自摸</div>
+    </div>
 
     <div class="opp seat-top"    id="seatTop"></div>
     <div class="opp seat-left"   id="seatLeft"></div>
@@ -168,12 +176,13 @@
 </script>
 <script src="js/tiles-art.js?v=28"></script>
 <script src="js/engine.js?v=28"></script>
-<script src="js/game.js?v=31"></script>
+<script src="js/game.js?v=32"></script>
 <script src="js/session.js?v=3"></script>
 <script src="js/ai.js?v=28"></script>
-<script src="js/sound.js?v=33"></script>
-<script src="js/ui.js?v=40"></script>
+<script src="js/sound.js?v=36"></script>
+<script src="js/characters.js?v=1"></script>
+<script src="js/ui.js?v=43"></script>
 <script src="js/net.js?v=35"></script>
-<script src="js/online.js?v=37"></script>
+<script src="js/online.js?v=39"></script>
 </body>
 </html>

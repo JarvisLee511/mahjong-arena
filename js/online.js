@@ -156,14 +156,16 @@
     const snap = G.snapshot();
     const v = {
       mySeat: forSeat, phase: G.phase, turn: G.turn, dealerIndex: snap.dealerIndex,
-      roundWind, wall: snap.wall, streak, lastDiscard: snap.lastDiscard,
+      roundWind, wall: snap.wall, wallLive: snap.wallLive, streak, lastDiscard: snap.lastDiscard,
       wallStart: snap.wallStart,
       wallDrawnFront: snap.wallDrawnFront,
       wallDrawnBack: snap.wallDrawnBack,
       furiten: G.furiten[forSeat],
       players: [0, 1, 2, 3].map((p) => ({
         seat: p, name: nameOf(p), ai: isAI(p), score: scores[p],
-        handCount: G.players[p].hand.length, melds: G.players[p].melds, flowers: G.players[p].flowers,
+        handCount: G.players[p].hand.length,
+        melds: window.MJView.maskMelds(G.players[p].melds, p !== forSeat && G.phase !== 'over'),
+        flowers: G.players[p].flowers,
         discards: G.players[p].discards,
       })),
       myHand: G.players[forSeat].hand.slice(),
@@ -225,11 +227,22 @@
     window.MJNet.send('begin', { roster: seats.map((s) => ({ seat: s.seat, name: s.name, ai: !!s.ai })) });
     startGameAudio();
     enterTable();
-    scores = [0, 0, 0, 0]; dealerIndex = 0; streak = 0; roundWind = 'z1'; dealerPasses = 0;
+    scores = [0, 0, 0, 0]; streak = 0; roundWind = 'z1'; dealerPasses = 0;
     sessionStats = [0, 1, 2, 3].map(() => ({ hu: 0, tsumo: 0, dealIn: 0 }));
+    hostWindsThenStart();
+  }
+
+  // ⑬ 抽風決莊(host 抽、廣播給客人同步演)→ ⑧ 擲骰 → 開局
+  function hostWindsThenStart() {
+    const perm = window.MJ.shuffle(['z1', 'z2', 'z3', 'z4']);
+    dealerIndex = perm.indexOf('z1');
     saveOnlineSession();
-    window.MJNet.send('dice', { name: nameOf(dealerIndex) });   // ⑧ 擲骰決莊(客人同步)
-    window.MJView.rollDealer(nameOf(dealerIndex), hostStartHand);
+    const names4 = [0, 1, 2, 3].map(nameOf);
+    window.MJNet.send('winds', { perm, dealerIndex, names: names4 });
+    window.MJView.drawWinds(names4, perm, dealerIndex, () => {
+      window.MJNet.send('dice', { name: nameOf(dealerIndex) });
+      window.MJView.rollDealer(nameOf(dealerIndex), hostStartHand);
+    });
   }
 
   function hostStartHand() {
@@ -237,10 +250,9 @@
     roundWind = (cfg().len === 'game') ? window.MJ.SEAT_WIND[Math.min(3, Math.floor(dealerPasses / 4))] : 'z1';
     G = new Game({ dealerIndex, roundWind, streak, aiLevel: cfg().lvl, swapMode: cfg().rule === 'swap', allowMultiHu: true, onEvent: hostEvent });
     window.MJView.rollDice();
-    window.MJNet.send('flash', { fx: 'deal' });
-    MJSound.fx('deal');
+    window.MJNet.send('flash', { anim: 'deal' });
     saveOnlineSession();
-    setTimeout(hostAdvance, 480);
+    window.MJView.dealAnim(hostAdvance);   // ⑫ 逐張發牌儀式(客人端同步播)
   }
 
   function hostEvent(type, p) {
@@ -250,16 +262,24 @@
       window.MJNet.send('flash', { fx: 'discard', tile: p.tile, tileName: nm });
       return;
     }
-    let text = null, voice = null, fx = null;
-    if (type === 'pung') { text = nameOf(p.player) + ' 碰!'; fx = 'pung'; voice = 'pung'; }
-    else if (type === 'kong') { text = nameOf(p.player) + ' 槓!'; fx = 'kong'; voice = 'kong'; }
-    else if (type === 'chow') { text = nameOf(p.player) + ' 吃'; fx = 'chow'; voice = 'chow'; }
+    let text = null, voice = null, fx = null, big = null, bigWho = null, bubble = null;
+    if (type === 'pung') { big = 'pung'; bigWho = nameOf(p.player) + ' 碰!'; fx = 'pung'; voice = 'pung'; }
+    else if (type === 'kong') { big = 'kong'; bigWho = nameOf(p.player) + ' 槓!'; fx = 'kong'; voice = 'kong'; }
+    else if (type === 'chow') { big = 'chow'; bigWho = nameOf(p.player) + ' 吃'; fx = 'chow'; voice = 'chow'; }
     else if (type === 'swap') { text = '換牌 · 第' + p.round + '輪'; fx = 'chow'; }
-    else if (type === 'ready') { text = nameOf(p.player) + (p.kind === 'tian' ? ' 天聽!' : ' 地聽!'); fx = 'tick'; }
+    else if (type === 'ready') { big = 'ready'; bigWho = nameOf(p.player) + (p.kind === 'tian' ? ' 天聽!' : ' 地聽!'); fx = 'tick'; }
     else if (type === 'win') { fx = 'hu'; voice = p.selfDraw ? 'tsumo' : 'hu'; }
+    // AI 角色戲:碰槓吃聽時抽一句台詞 + 表情
+    if (big && isAI(p.player) && window.MJChars) {
+      window.MJChars.setMood(p.player, type === 'ready' ? 'smug' : 'happy');
+      const line = window.MJChars.line(nameOf(p.player), type);
+      if (line && Math.random() < 0.6) bubble = { seat: p.player, text: line };
+    }
     if (text) window.MJView.toast(text);
+    if (big) window.MJView.actionFX(big, bigWho);
+    if (bubble) window.MJView.showBubble(bubble.seat, bubble.text);   // host 是座位 0,位置=座位
     if (fx) MJSound.fx(fx); if (voice) MJSound.voice(voice);
-    window.MJNet.send('flash', { text, fx, voice });
+    window.MJNet.send('flash', { text, fx, voice, big, bigWho, bubble });
   }
 
   function hostAdvance() {
@@ -393,19 +413,35 @@
       const wp = G.players[r.winners[0].player];
       r.winHand = { melds: wp.melds, hand: wp.hand.slice() };
       if (dealerKept) streak++; else { dealerIndex = (dealerIndex + 1) & 3; streak = 0; dealerPasses++; }
+      charFinishReact(r);
     }
     saveOnlineSession();
     // push final views (with updated scores) to guests + show locally
     for (let p = 1; p <= 3; p++) if (cidOf(p)) window.MJNet.to(cidOf(p), 'result', buildView(p));
     showHostResult(true);
   }
+  // 胡牌後的角色戲:AI 贏家嗆聲、AI 放槍跳腳(host 演 + 廣播給客人)
+  function charFinishReact(r) {
+    if (!window.MJChars || r.type !== 'win') return;
+    const act = (seat, ev, mood) => {
+      if (!isAI(seat)) return;
+      window.MJChars.setMood(seat, mood, 4500);
+      const t = window.MJChars.line(nameOf(seat), ev);
+      if (!t) return;
+      window.MJView.showBubble(seat, t);
+      window.MJNet.send('flash', { bubble: { seat, text: t } });
+    };
+    const w0p = r.winners[0].player;
+    if (isAI(w0p)) act(w0p, r.selfDraw ? 'tsumo' : (r.loser != null && !isAI(r.loser) ? 'dealInYou' : 'win'), 'smug');
+    else { const ais = [1, 2, 3].filter(isAI); if (ais.length) act(ais[(Math.random() * ais.length) | 0], 'humanWin', 'angry'); }
+    if (r.loser != null && r.loser !== w0p) act(r.loser, 'lostBig', 'angry');
+  }
+
   function hostNewRound() {
-    scores = [0, 0, 0, 0]; dealerIndex = 0; streak = 0; dealerPasses = 0;
+    scores = [0, 0, 0, 0]; streak = 0; dealerPasses = 0;
     sessionStats = [0, 1, 2, 3].map(() => ({ hu: 0, tsumo: 0, dealIn: 0 }));
     G = null;
-    saveOnlineSession();
-    window.MJNet.send('dice', { name: nameOf(dealerIndex) });
-    window.MJView.rollDealer(nameOf(dealerIndex), hostStartHand);
+    hostWindsThenStart();
   }
 
   // ---------- host message handler --------------------------
@@ -541,6 +577,9 @@
     else if (type === 'result') acceptGuestView(payload, true);
     else if (type === 'flash') {
       if (payload.text) window.MJView.toast(payload.text);
+      if (payload.big) window.MJView.actionFX(payload.big, payload.bigWho);
+      if (payload.bubble) window.MJView.showBubble(((payload.bubble.seat - selfSeat()) + 4) & 3, payload.bubble.text);
+      if (payload.anim === 'deal') window.MJView.dealAnim();
       if (payload.fx) MJSound.fx(payload.fx);
       if (payload.voice) MJSound.voice(payload.voice);
       if (payload.tile) MJSound.tile(payload.tile, payload.tileName);
@@ -551,6 +590,7 @@
       } else startRejoinHandshake();
     }
     else if (type === 'emote') { onEmote(payload); }
+    else if (type === 'winds') { window.MJView.drawWinds(payload.names, payload.perm, payload.dealerIndex, () => {}); }
     else if (type === 'dice') { window.MJView.rollDealer(payload.name, () => {}); }
   }
 
