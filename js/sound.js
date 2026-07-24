@@ -61,9 +61,9 @@
   };
   const BOOSTED_RECORDED_CLAIMS = new Set(['pung', 'kong', 'chow', 'hu', 'tsumo']);
   const RECORDED_VOICE_VOLUME = 0.33;
-  const TILE_CLIP_GAIN = 2.0;     // 報牌通道加 3 倍(手機太小聲),走限幅器防爆音
-  const TILE_TTS_VOLUME = 0.9;    // TTS 備援報牌也拉高(SpeechSynthesis 上限 1.0)
-  const BOOST_BASE = 4.5;
+  const TILE_CLIP_GAIN = 6.0;     // 報牌通道(用戶指定 2.0 再×3),有限幅器防爆音
+  const TILE_TTS_VOLUME = 0.9;    // TTS 備援報牌(SpeechSynthesis 上限 1.0)
+  const BOOST_BASE = 6.75;        // 自錄吃碰槓胡(用戶指定 4.5×1.5)
   const clips = {};            // key -> HTMLAudioElement
   const boostedSources = new WeakMap();
   const tileSources = new WeakMap();
@@ -84,8 +84,8 @@
     if (tileGain) tileGain.gain.value = TILE_CLIP_GAIN * mul('tts');
     if (boostedGain) boostedGain.gain.value = BOOST_BASE * mul('voice');
     if (bgmKind && BGM_VOL[bgmKind] != null) {
-      if (bgmElemGain) bgmElemGain.gain.value = BGM_VOL[bgmKind] * mul('bgm');
-      else if (bgmAudio) bgmAudio.volume = capped(BGM_VOL[bgmKind] * mul('bgm'));
+      if (bgmMusicGain) bgmMusicGain.gain.value = BGM_VOL[bgmKind] * mul('bgm');
+      if (bgmAudio) bgmAudio.volume = capped(BGM_VOL[bgmKind] * mul('bgm'));
     }
     if (bgmGain && bgmKind && SYNTH_VOL[bgmKind] != null) bgmGain.gain.value = SYNTH_VOL[bgmKind] * mul('bgm');
   }
@@ -98,57 +98,107 @@
 
   // Claim calls need more presence than tile names, but raw 3x gain clips loudly.
   // Keep the gain on its own bus and catch peaks before they reach the speakers.
+  function mkLimiter(a) {
+    const limiter = a.createDynamicsCompressor();
+    limiter.threshold.value = -6;
+    limiter.knee.value = 0;
+    limiter.ratio.value = 20;
+    limiter.attack.value = 0.001;
+    limiter.release.value = 0.12;
+    return limiter;
+  }
+  function ensureBoostedBus() {
+    const a = ac(); if (!a) return null;
+    if (!boostedGain) {
+      boostedGain = a.createGain();
+      boostedGain.gain.value = BOOST_BASE * mul('voice');
+      boostedLimiter = mkLimiter(a);
+      boostedGain.connect(boostedLimiter);
+      boostedLimiter.connect(a.destination);
+    }
+    return boostedGain;
+  }
+  function ensureTileBus() {
+    const a = ac(); if (!a) return null;
+    if (!tileGain) {
+      tileGain = a.createGain();
+      tileGain.gain.value = TILE_CLIP_GAIN * mul('tts');
+      const limiter = mkLimiter(a);   // 增益>1,比照吃碰通道限幅防爆音
+      tileGain.connect(limiter);
+      limiter.connect(a.destination);
+    }
+    return tileGain;
+  }
   function routeBoostedVoice(audio) {
-    const a = ac();
-    if (!a) return false;
+    const a = ac(), g = ensureBoostedBus();
+    if (!a || !g) return false;
     try {
-      if (!boostedGain) {
-        boostedGain = a.createGain();
-        boostedGain.gain.value = BOOST_BASE * mul('voice');
-        boostedLimiter = a.createDynamicsCompressor();
-        boostedLimiter.threshold.value = -6;
-        boostedLimiter.knee.value = 0;
-        boostedLimiter.ratio.value = 20;
-        boostedLimiter.attack.value = 0.001;
-        boostedLimiter.release.value = 0.12;
-        boostedGain.connect(boostedLimiter);
-        boostedLimiter.connect(a.destination);
-      }
       if (!boostedSources.has(audio)) {
         const source = a.createMediaElementSource(audio);
-        source.connect(boostedGain);
+        source.connect(g);
         boostedSources.set(audio, source);
       }
       return true;
-    } catch (e) {
-      return false;
-    }
+    } catch (e) { return false; }
   }
   function routeTileVoice(audio) {
-    const a = ac();
-    if (!a) return false;
+    const a = ac(), g = ensureTileBus();
+    if (!a || !g) return false;
     try {
-      if (!tileGain) {
-        tileGain = a.createGain();
-        tileGain.gain.value = TILE_CLIP_GAIN * mul('tts');
-        const limiter = a.createDynamicsCompressor();   // 增益>1,比照吃碰通道限幅防爆音
-        limiter.threshold.value = -6;
-        limiter.knee.value = 0;
-        limiter.ratio.value = 20;
-        limiter.attack.value = 0.001;
-        limiter.release.value = 0.12;
-        tileGain.connect(limiter);
-        limiter.connect(a.destination);
-      }
       if (!tileSources.has(audio)) {
         const source = a.createMediaElementSource(audio);
-        source.connect(tileGain);
+        source.connect(g);
         tileSources.set(audio, source);
       }
       return true;
-    } catch (e) {
-      return false;
+    } catch (e) { return false; }
+  }
+
+  // ---- WebAudio buffer 播放(主路徑)----------------------------------
+  // iOS WebKit 對 <audio>.volume 與 MediaElementSource 都不可靠(音量增益可能被繞過),
+  // 一律 fetch+decode 成 AudioBuffer 走增益播;fetch 失敗(如 file:// 直開)退回 <audio> 元素。
+  const buffers = {};              // key -> AudioBuffer
+  const bufferFails = new Set();
+  const bufferLoading = new Set();
+  function loadBuffer(key, url) {
+    const a = ac();
+    if (typeof location !== 'undefined' && location.protocol === 'file:') {   // file:// fetch 必被 CORS 擋,直接走元素備援
+      bufferFails.add(key);
+      return Promise.resolve(null);
     }
+    if (!a || buffers[key] || bufferFails.has(key) || bufferLoading.has(key)) {
+      return Promise.resolve(buffers[key] || null);
+    }
+    bufferLoading.add(key);
+    return fetch(url)
+      .then((r) => { if (!r.ok) throw new Error('http ' + r.status); return r.arrayBuffer(); })
+      .then((ab) => new Promise((res, rej) => a.decodeAudioData(ab, res, rej)))
+      .then((buf) => { buffers[key] = buf; bufferLoading.delete(key); return buf; })
+      .catch(() => { bufferFails.add(key); bufferLoading.delete(key); return null; });
+  }
+  function playBuffer(key, gainNode) {
+    const a = ac(), buf = buffers[key];
+    if (!a || !buf || !gainNode) return false;
+    try {
+      const s = a.createBufferSource();
+      s.buffer = buf; s.connect(gainNode); s.start();
+      return true;
+    } catch (e) { return false; }
+  }
+  function playBufferAtVolume(key, volume) {   // 一次性小增益(非常駐 bus 的雜項語音)
+    const a = ac(), buf = buffers[key];
+    if (!a || !buf) return false;
+    try {
+      const g = a.createGain(); g.gain.value = volume; g.connect(a.destination);
+      const s = a.createBufferSource(); s.buffer = buf; s.connect(g); s.start();
+      return true;
+    } catch (e) { return false; }
+  }
+  function decodeAllClips() {   // 把清單裡的音檔全部解碼(loadBuffer 自身防重複)
+    Object.keys(clips).forEach((key) => {
+      const src = clips[key] && clips[key].src;
+      if (src) loadBuffer(key, src);
+    });
   }
   // load only the files listed in assets/audio/manifest.json → no 404 spam.
   // manifest is a JSON array of filenames, e.g. ["pung.m4a","hu.mp3"].
@@ -169,6 +219,7 @@
       a.onerror = () => { delete clips[key]; };
       clips[key] = a;
     });
+    decodeAllClips();   // AudioContext 已在(解鎖後)就順手解碼成 buffer
   }
   function preloadVoices() {
     if (voicesTried) return; voicesTried = true;
@@ -179,6 +230,10 @@
   }
   function voice(key) {
     if (!enabled) return;
+    // 主路徑:AudioBuffer 走增益(手機/桌機音量一致);沒 buffer 才退回 <audio> 元素
+    if (BOOSTED_RECORDED_CLAIMS.has(key)) {
+      if (playBuffer(key, ensureBoostedBus())) return;
+    } else if (playBufferAtVolume(key, RECORDED_VOICE_VOLUME * mul('voice'))) return;
     const a = clips[key];
     if (a) {
       try {
@@ -193,6 +248,7 @@
   // 報牌:打出的每張牌念出牌名。有 assets/audio/<code>.* 音檔就播,否則國語 TTS。
   function tileVoice(code, spoken) {
     if (!enabled) return;
+    if (playBuffer(code, ensureTileBus())) return;
     const a = clips[code];
     if (a) {
       try {
@@ -226,8 +282,8 @@
   // 'lobby' = 戲劇賭場氛圍(賭神那種感覺,原創);'game' = 中國風輕音樂(音量壓低於人聲)。
   // 兩條音軌在載入腳本時先建立，手機上的第一次手勢可直接 play，不需等待 fetch。
   const BGM_FILES = { lobby: 'lobby.mp3', game: 'game.mp3' };
-  const BGM_VOL = { lobby: 0.5, game: 0.081 };     // 音檔基準音量(滑桿 0.5 = 此值)
-  const SYNTH_VOL = { lobby: 0.16, game: 0.023 };  // WebAudio 合成備援基準
+  const BGM_VOL = { lobby: 0.3, game: 0.049 };      // 音檔基準音量(用戶指定×0.6;滑桿 0.5 = 此值)
+  const SYNTH_VOL = { lobby: 0.096, game: 0.014 };  // WebAudio 合成備援基準(同步×0.6)
   const bgmTracks = {};
   if (typeof Audio !== 'undefined') {
     Object.keys(BGM_FILES).forEach((kind) => {
@@ -240,21 +296,12 @@
   }
   let bgmOn = false, bgmKind = null, bgmAudio = null, bgmTimer = null, bgmGain = null;
   let bgmGeneration = 0;
-  // iOS Safari 無視 <audio>.volume(唯讀)→ BGM 必須走 WebAudio 增益,音量控制才在手機上生效
-  const bgmSources = new WeakMap();
-  let bgmElemGain = null;
-  function routeBgm(audio) {
-    const a = ac();
-    if (!a) return false;
-    try {
-      if (!bgmElemGain) { bgmElemGain = a.createGain(); bgmElemGain.connect(a.destination); }
-      if (!bgmSources.has(audio)) {
-        const src = a.createMediaElementSource(audio);
-        src.connect(bgmElemGain);
-        bgmSources.set(audio, src);
-      }
-      return true;
-    } catch (e) { return false; }
+  // iOS WebKit 對 <audio>.volume 和 MediaElementSource 都不可靠 → BGM 主路徑=AudioBuffer 循環播放
+  let bgmMusicGain = null, bgmSource = null;
+  function ensureBgmBus() {
+    const a = ac(); if (!a) return null;
+    if (!bgmMusicGain) { bgmMusicGain = a.createGain(); bgmMusicGain.connect(a.destination); }
+    return bgmMusicGain;
   }
   function mkNote(freq, when, dur, type, gain, cutoff) {
     const a = ac(); if (!a || !bgmGain) return;
@@ -306,17 +353,32 @@
   function bgmStart(kind) {
     kind = kind || 'lobby';
     if (!enabled || (bgmOn && bgmKind === kind)) return;
-    bgmStop(); bgmOn = true; bgmKind = kind; ac();
+    bgmStop(); bgmOn = true; bgmKind = kind;
+    const a = ac();
     const generation = bgmGeneration;
+    const bus = ensureBgmBus();
+    if (a && bus) {
+      bus.gain.value = BGM_VOL[kind] * mul('bgm');
+      loadBuffer('bgm:' + kind, 'assets/music/' + BGM_FILES[kind]).then((buf) => {
+        if (!bgmOn || bgmKind !== kind || generation !== bgmGeneration) return;
+        if (!buf) { bgmElementFallback(kind, generation); return; }
+        try {
+          bgmSource = a.createBufferSource();
+          bgmSource.buffer = buf; bgmSource.loop = true;
+          bgmSource.connect(bus); bgmSource.start();
+        } catch (e) { bgmElementFallback(kind, generation); }
+      });
+      return;
+    }
+    bgmElementFallback(kind, generation);
+  }
+  // 無 WebAudio / fetch 失敗(file:// 直開)才退回 <audio> 元素播放
+  function bgmElementFallback(kind, generation) {
+    if (!bgmOn || bgmKind !== kind || generation !== bgmGeneration) return;
     const audio = bgmTracks[kind];
     if (!audio) { startSynth(kind, generation); return; }
     bgmAudio = audio;
-    if (routeBgm(audio)) {
-      bgmAudio.volume = 1;                                  // 音量交給 gain 統一管(桌機/手機一致)
-      bgmElemGain.gain.value = BGM_VOL[kind] * mul('bgm');
-    } else {
-      bgmAudio.volume = capped(BGM_VOL[kind] * mul('bgm')); // 無 WebAudio 才退回元素音量
-    }
+    bgmAudio.volume = capped(BGM_VOL[kind] * mul('bgm'));
     try { bgmAudio.currentTime = 0; } catch (e) {}
     let playback;
     try { playback = bgmAudio.play(); }
@@ -332,6 +394,7 @@
     bgmGeneration++;
     bgmOn = false; bgmKind = null;
     if (bgmTimer) { clearTimeout(bgmTimer); bgmTimer = null; }
+    if (bgmSource) { try { bgmSource.stop(); } catch (e) {} bgmSource = null; }
     Object.keys(bgmTracks).forEach((kind) => { try { bgmTracks[kind].pause(); } catch (e) {} });
     bgmAudio = null;
     if (bgmGain) { try { bgmGain.gain.value = 0; } catch (e) {} bgmGain = null; }
@@ -344,7 +407,7 @@
     say, voice, tile: tileVoice, preloadVoices,
     setVolume, volumes: () => Object.assign({}, vol),
     bgmStart, bgmStop,
-    unlock() { ac(); preloadVoices(); },         // call on first user gesture
+    unlock() { ac(); preloadVoices(); decodeAllClips(); },   // call on first user gesture
     set enabled(v) { enabled = v; if (!v) { bgmStop(); if (window.speechSynthesis) speechSynthesis.cancel(); } },
     get enabled() { return enabled; },
     set lang(v) { lang = v; },
