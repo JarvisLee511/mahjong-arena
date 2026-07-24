@@ -61,8 +61,8 @@
   };
   const BOOSTED_RECORDED_CLAIMS = new Set(['pung', 'kong', 'chow', 'hu', 'tsumo']);
   const RECORDED_VOICE_VOLUME = 0.33;
-  const TILE_CLIP_GAIN = 0.65;
-  const TILE_TTS_VOLUME = 0.45;   // 明星三缺一式全量報牌:TTS 要聽得見(自錄音檔仍優先且不受影響)
+  const TILE_CLIP_GAIN = 2.0;     // 報牌通道加 3 倍(手機太小聲),走限幅器防爆音
+  const TILE_TTS_VOLUME = 0.9;    // TTS 備援報牌也拉高(SpeechSynthesis 上限 1.0)
   const BOOST_BASE = 4.5;
   const clips = {};            // key -> HTMLAudioElement
   const boostedSources = new WeakMap();
@@ -128,7 +128,14 @@
       if (!tileGain) {
         tileGain = a.createGain();
         tileGain.gain.value = TILE_CLIP_GAIN * mul('tts');
-        tileGain.connect(a.destination);
+        const limiter = a.createDynamicsCompressor();   // 增益>1,比照吃碰通道限幅防爆音
+        limiter.threshold.value = -6;
+        limiter.knee.value = 0;
+        limiter.ratio.value = 20;
+        limiter.attack.value = 0.001;
+        limiter.release.value = 0.12;
+        tileGain.connect(limiter);
+        limiter.connect(a.destination);
       }
       if (!tileSources.has(audio)) {
         const source = a.createMediaElementSource(audio);
