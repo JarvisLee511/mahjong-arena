@@ -83,7 +83,10 @@
   function applyVolumes() {
     if (tileGain) tileGain.gain.value = TILE_CLIP_GAIN * mul('tts');
     if (boostedGain) boostedGain.gain.value = BOOST_BASE * mul('voice');
-    if (bgmAudio && bgmKind && BGM_VOL[bgmKind] != null) bgmAudio.volume = capped(BGM_VOL[bgmKind] * mul('bgm'));
+    if (bgmKind && BGM_VOL[bgmKind] != null) {
+      if (bgmElemGain) bgmElemGain.gain.value = BGM_VOL[bgmKind] * mul('bgm');
+      else if (bgmAudio) bgmAudio.volume = capped(BGM_VOL[bgmKind] * mul('bgm'));
+    }
     if (bgmGain && bgmKind && SYNTH_VOL[bgmKind] != null) bgmGain.gain.value = SYNTH_VOL[bgmKind] * mul('bgm');
   }
   function setVolume(key, v) {
@@ -237,6 +240,22 @@
   }
   let bgmOn = false, bgmKind = null, bgmAudio = null, bgmTimer = null, bgmGain = null;
   let bgmGeneration = 0;
+  // iOS Safari 無視 <audio>.volume(唯讀)→ BGM 必須走 WebAudio 增益,音量控制才在手機上生效
+  const bgmSources = new WeakMap();
+  let bgmElemGain = null;
+  function routeBgm(audio) {
+    const a = ac();
+    if (!a) return false;
+    try {
+      if (!bgmElemGain) { bgmElemGain = a.createGain(); bgmElemGain.connect(a.destination); }
+      if (!bgmSources.has(audio)) {
+        const src = a.createMediaElementSource(audio);
+        src.connect(bgmElemGain);
+        bgmSources.set(audio, src);
+      }
+      return true;
+    } catch (e) { return false; }
+  }
   function mkNote(freq, when, dur, type, gain, cutoff) {
     const a = ac(); if (!a || !bgmGain) return;
     const o = a.createOscillator(), g = a.createGain(), f = a.createBiquadFilter();
@@ -292,7 +311,12 @@
     const audio = bgmTracks[kind];
     if (!audio) { startSynth(kind, generation); return; }
     bgmAudio = audio;
-    bgmAudio.volume = capped(BGM_VOL[kind] * mul('bgm'));   // 中國風再降,更淡
+    if (routeBgm(audio)) {
+      bgmAudio.volume = 1;                                  // 音量交給 gain 統一管(桌機/手機一致)
+      bgmElemGain.gain.value = BGM_VOL[kind] * mul('bgm');
+    } else {
+      bgmAudio.volume = capped(BGM_VOL[kind] * mul('bgm')); // 無 WebAudio 才退回元素音量
+    }
     try { bgmAudio.currentTime = 0; } catch (e) {}
     let playback;
     try { playback = bgmAudio.play(); }
