@@ -11,8 +11,8 @@
 <title>該死的賭徒們 · Damn Gamblers</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&family=Ma+Shan+Zheng&family=Zhi+Mang+Xing&family=LXGW+WenKai+TC:wght@700&family=Bebas+Neue&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=42">
-<link rel="stylesheet" href="css/table.css?v=15">
+  <link rel="stylesheet" href="css/style.css?v=43">
+<link rel="stylesheet" href="css/table.css?v=16">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="manifest" href="manifest.json">
 </head>
@@ -155,7 +155,13 @@
   var N = 18;                 // 17 張 + 摸牌間隔 + 牌縫
   var RATIO = 1.72;           // 牌高/牌寬
   function fit() {
-    var vw = window.innerWidth, vh = window.innerHeight;
+    var vv = window.visualViewport;
+    var vw = window.innerWidth;
+    var vh = vv ? vv.height : window.innerHeight;
+    // iOS Safari 的底部工具列/主頁指示區會蓋住 position:fixed 底部元素 → 按鈕被工具列吃掉觸擊,
+    // 要往上一點才點得到。用「可視視窗」高度定義 App 高度,讓底部按鈕永遠落在可觸擊範圍內。
+    document.documentElement.style.setProperty('--app-h', Math.round(vh) + 'px');
+    document.documentElement.style.setProperty('--app-top', Math.round(vv ? vv.offsetTop : 0) + 'px');
     var css = getComputedStyle(document.documentElement);
     var safeLeft = parseFloat(css.getPropertyValue('--safe-left')) || 0;
     var safeRight = parseFloat(css.getPropertyValue('--safe-right')) || 0;
@@ -170,7 +176,10 @@
   window.MJLayout.fitTiles = fit;
   window.addEventListener('resize', fit);
   window.addEventListener('orientationchange', fit);
-  if (window.visualViewport) window.visualViewport.addEventListener('resize', fit);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', fit);
+    window.visualViewport.addEventListener('scroll', fit);   // 工具列滑出/滑入 → offsetTop 變動
+  }
   fit();
 })();
 </script>

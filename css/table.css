@@ -842,7 +842,7 @@
 
 .actions {
   right: max(8px, env(safe-area-inset-right));
-  bottom: max(2px, env(safe-area-inset-bottom));
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);   /* 離底邊留手指空間,避開主頁指示區 */
   left: auto;
   gap: clamp(5px, .8vw, 10px);
 }

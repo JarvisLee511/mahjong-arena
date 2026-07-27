@@ -34,8 +34,10 @@
 html, body { width: 100%; height: 100%; min-height: 100%; overflow: hidden; background: var(--ink); }
 html.game-scene, html.game-scene body { background: #25a9d2; }
 @supports (height: 100dvh) {
-  html, body, #lobby, #app { height: 100dvh; min-height: 100dvh; }
+  html, body, #lobby { height: 100dvh; min-height: 100dvh; }   /* #app 高度改用 --app-h(見下) */
 }
+/* 觸控:消除 iOS 300ms 延遲與雙擊縮放誤觸,讓按鈕/牌一點就中 */
+button, .act-btn, .tile, .icon-btn, #emotePanel > *, .wind-card { touch-action: manipulation; }
 body {
   font-family: var(--font);
   background:
@@ -571,7 +573,10 @@ body {
    ============================================================ */
 /* 明星3缺一式滿版牌桌:不留黑邊,手牌撐滿整個螢幕寬。
    牌尺寸由 index.html 依螢幕寬算出的 --tile-w/--tile-h 驅動,全部牌都由它衍生。 */
-#app { position: fixed; inset: 0; display: none; overflow: hidden;
+/* iOS 修正:用可視視窗高(--app-h,由 index.html 依 visualViewport 設定)而非 inset:0,
+   避免底部按鈕被 Safari 工具列蓋住而點不到(要往上一點才點得到)。 */
+#app { position: fixed; left: 0; right: 0; top: var(--app-top, 0px); bottom: auto;
+  height: var(--app-h, 100dvh); display: none; overflow: hidden;
   --sb-h: clamp(22px, 4.2vh, 30px);
   --side: clamp(64px, 11.5vw, 96px);   /* 兩側固定寬 → 大海(中央)不會因副露變小 */
   /* 明星3缺一風:海景天空背景(原創 CSS 場景)*/
