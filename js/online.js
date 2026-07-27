@@ -31,7 +31,8 @@
   let mySeat = null, myName = '';
   let joinStatus = null, joinTimer = null;   // 'connecting' | 'seated' | 'failed'
   let joinFailureReason = '', joinRejected = false, rejoinTimer = null, rejoinGeneration = 0, lastGuestView = null;
-  let restoringSession = false, guestOnlineReady = false;
+  let restoringSession = false, guestOnlineReady = false, intentWatchdog = null;
+  const INTENT_WATCHDOG = 3500;   // 送出動作後這麼久沒收到新畫面 → 自動重新同步(手機掉封包不再永久卡死)
   let playerToken = savedOnline && savedOnline.kind === 'online' && savedOnline.playerToken
     ? savedOnline.playerToken
     : (window.MJSession ? window.MJSession.token() : Date.now().toString(36) + Math.random().toString(36).slice(2));
@@ -52,7 +53,7 @@
   }
 
   function leaveOnline() {
-    clearTimeout(joinTimer); clearTimeout(rejoinTimer); clearTimeout(claimTimer);
+    clearTimeout(joinTimer); clearTimeout(rejoinTimer); clearTimeout(claimTimer); clearTimeout(intentWatchdog);
     if (window.MJLeaveGame) window.MJLeaveGame();
     else {
       if (window.MJSession) { window.MJSession.clear(); window.MJSession.setScene('lobby'); }
@@ -291,19 +292,52 @@
     if (G.phase === 'act') {
       const seat = G.turn;
       if (isAI(seat)) setTimeout(() => hostAI(seat), aiDelay);
-      else if (seat !== 0) {
-        claimTimer = setTimeout(() => {
-          if (!G || G.phase !== 'act' || G.turn !== seat) return;
-          try {
-            const action = window.MJAI.act(G, seat);
-            if (action.type === 'discard') MJSound.fx('discard');
-            G.applyAct(seat, action);
-          } catch (e) { return; }
-          hostAdvance();
-        }, ACT_TIMEOUT);
-      }
-      // The local host has no forced timer; remote seats fall back to AI.
+      else if (seat !== 0) armActWait(seat);
+      // The local host has no forced timer; remote seats re-sync then fall back to AI.
     } else if (G.phase === 'claim') hostClaims();
+  }
+
+  const NUDGE = 2500;   // re-send a waited-on human their view this often (covers a lost inbound view)
+  // Wait on a remote human to discard: re-push their turn view a few times, then AI plays for them.
+  function armActWait(seat) {
+    clearTimeout(claimTimer);
+    const maxNudge = Math.max(1, Math.floor(ACT_TIMEOUT / NUDGE) - 1);
+    let n = 0;
+    const tick = () => {
+      if (!G || G.phase !== 'act' || G.turn !== seat) return;
+      if (n < maxNudge) { n++; resyncSeat(seat); claimTimer = setTimeout(tick, NUDGE); return; }
+      try {
+        const action = window.MJAI.act(G, seat);
+        if (action.type === 'discard') MJSound.fx('discard');
+        G.applyAct(seat, action);
+      } catch (e) { return; }
+      hostAdvance();
+    };
+    claimTimer = setTimeout(tick, NUDGE);
+  }
+  // Wait on remote humans to claim/pass: re-push their claim view a few times, then auto-pass.
+  function armClaimWait() {
+    clearTimeout(claimTimer);
+    const maxNudge = Math.max(1, Math.floor(CLAIM_TIMEOUT / NUDGE));
+    let n = 0;
+    const tick = () => {
+      if (!G || G.phase !== 'claim' || !G.pendingClaims) return;
+      if (n < maxNudge) {
+        n++;
+        Object.keys(G.pendingClaims.options).map(Number).forEach((p) => {
+          if (p !== 0 && !isAI(p) && !G.pendingClaims.declared[p]) resyncSeat(p);
+        });
+        claimTimer = setTimeout(tick, NUDGE);
+        return;
+      }
+      const pendingSeats = Object.keys(G.pendingClaims.options).map(Number);
+      for (const p of pendingSeats) {
+        if (!G || G.phase !== 'claim' || !G.pendingClaims) break;
+        if (!G.pendingClaims.declared[p]) G.declareClaim(p, { type: 'pass' });
+      }
+      if (G.phase !== 'claim') hostAdvance();
+    };
+    claimTimer = setTimeout(tick, NUDGE);
   }
 
   function hostSwap() {
@@ -336,14 +370,24 @@
     G.applyAct(seat, a); hostAdvance();
   }
 
+  // Never drop a guest intent without answering: resend that seat its current
+  // view so a guest who acted on a slightly stale view re-syncs and re-enables
+  // its buttons instead of hanging on guestOnlineReady=false forever.
+  function resyncSeat(seat) {
+    if (!G) return;
+    if (seat === 0) { window.MJView.renderView(buildView(0), hostHandlers); return; }
+    const cid = cidOf(seat);
+    if (cid) window.MJNet.to(cid, G.phase === 'over' ? 'result' : 'view', buildView(seat));
+  }
+
   function applyActFor(seat, action) {
-    if (!G || G.phase !== 'act' || G.turn !== seat) return;
+    if (!G || G.phase !== 'act' || G.turn !== seat) { resyncSeat(seat); return; }
     try {
       if (action.type === 'discard') MJSound.fx('discard');
       if (action.type === 'ankong' || action.type === 'addkong') MJSound.fx('kong');
       G.applyAct(seat, action);
       hostAdvance();
-    } catch (e) { /* illegal/stale intent — ignore */ }
+    } catch (e) { resyncSeat(seat); /* illegal/stale intent — re-sync the guest */ }
   }
 
   function hostClaims() {
@@ -351,26 +395,17 @@
     // AI declare immediately
     elig.filter((p) => isAI(p)).forEach((p) => { if (G.phase === 'claim') G.declareClaim(p, window.MJAI.claim(G, p)); });
     if (G.phase !== 'claim') { setTimeout(hostAdvance, aiDelay * 0.5); return; }
-    // humans (local + remote) — push views so they see buttons, arm auto-pass
+    // humans (local + remote) — push views so they see buttons, nudge + auto-pass
     pushViews();
-    clearTimeout(claimTimer);
-    claimTimer = setTimeout(() => {
-      if (!G || G.phase !== 'claim') return;
-      const pendingSeats = Object.keys(G.pendingClaims.options).map(Number);
-      for (const p of pendingSeats) {
-        if (!G || G.phase !== 'claim' || !G.pendingClaims) break;
-        if (!G.pendingClaims.declared[p]) G.declareClaim(p, { type: 'pass' });
-      }
-      if (G.phase !== 'claim') hostAdvance();
-    }, CLAIM_TIMEOUT);
+    armClaimWait();
   }
 
   function declareFor(seat, action) {
-    if (!G || G.phase !== 'claim' || !G.pendingClaims.options[seat]) return;
+    if (!G || G.phase !== 'claim' || !G.pendingClaims.options[seat]) { resyncSeat(seat); return; }
     try {
       G.declareClaim(seat, action);
     } catch (e) {
-      pushViews();
+      resyncSeat(seat);
       return;
     }
     if (G.phase !== 'claim') { clearTimeout(claimTimer); hostAdvance(); }
@@ -498,6 +533,17 @@
   // ============================================================
   //  GUEST
   // ============================================================
+  // If a sent intent never gets answered with a fresh view (dropped packet or
+  // a stale intent the host ignored), the guest would otherwise sit with its
+  // buttons disabled forever. This watchdog kicks off the rejoin/re-sync loop.
+  function armIntentWatchdog() {
+    clearTimeout(intentWatchdog);
+    intentWatchdog = setTimeout(() => {
+      intentWatchdog = null;
+      if (mode === 'guest' && !guestOnlineReady) startRejoinHandshake();
+    }, INTENT_WATCHDOG);
+  }
+
   async function sendGuestIntent(type, payload) {
     if (!guestOnlineReady) {
       window.MJView.toast('正在恢復連線，請稍候');
@@ -507,7 +553,7 @@
     guestOnlineReady = false;
     disableBar();
     const sent = await window.MJNet.send(type, payload);
-    if (sent) return;
+    if (sent) { armIntentWatchdog(); return; }
     if (lastGuestView) {
       const stale = clone(lastGuestView); stale.mySeat = mySeat;
       window.MJView.renderView(stale, guestHandlers);
@@ -527,6 +573,7 @@
   function stopRejoinHandshake() {
     rejoinGeneration++;
     clearTimeout(rejoinTimer); rejoinTimer = null;
+    clearTimeout(intentWatchdog); intentWatchdog = null;
     restoringSession = false;
   }
 
