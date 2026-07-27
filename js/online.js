@@ -168,7 +168,10 @@
         melds: window.MJView.maskMelds(G.players[p].melds, p !== forSeat && G.phase !== 'over'),
         flowers: G.players[p].flowers,
         discards: G.players[p].discards,
+        declared: !!G.ready[p],
       })),
+      readyPending: !!G.readyPending[forSeat],
+      locked: !!G.ready[forSeat],
       myHand: G.players[forSeat].hand.slice(),
       myActions: (G.phase === 'act' && G.turn === forSeat) ? G.actActions(forSeat) : null,
       myDrawn: (G.phase === 'act' && G.turn === forSeat) ? G.players[forSeat]._drawn : null,
@@ -268,7 +271,7 @@
     else if (type === 'kong') { big = 'kong'; bigWho = nameOf(p.player) + ' 槓!'; fx = 'kong'; voice = 'kong'; }
     else if (type === 'chow') { big = 'chow'; bigWho = nameOf(p.player) + ' 吃'; fx = 'chow'; voice = 'chow'; }
     else if (type === 'swap') { text = '換牌 · 第' + p.round + '輪'; fx = 'chow'; }
-    else if (type === 'ready') { big = 'ready'; bigWho = nameOf(p.player) + (p.kind === 'tian' ? ' 天聽!' : ' 地聽!'); fx = 'tick'; }
+    else if (type === 'ready') { big = 'ready'; bigWho = nameOf(p.player) + (p.kind === 'tian' ? ' 天聽!' : p.kind === 'di' ? ' 地聽!' : ' 聽!'); fx = 'tick'; }
     else if (type === 'win') { fx = 'hu'; voice = p.selfDraw ? 'tsumo' : 'hu'; }
     // AI 角色戲:碰槓吃聽時抽一句台詞 + 表情
     if (big && isAI(p.player) && window.MJChars) {

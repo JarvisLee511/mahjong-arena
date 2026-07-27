@@ -230,7 +230,7 @@
     const bd = [];
     // full meld list (exposed + concealed decomposition), pair separate
     const allMelds = exposed.map((m) => ({
-      type: m.type, tiles: m.tiles.slice(), concealed: !!m.concealed,
+      type: m.type, subtype: m.subtype, tiles: m.tiles.slice(), concealed: !!m.concealed,
     })).concat(dec.melds.map((m) => ({ type: m.type, tiles: m.tiles, concealed: true })));
     const pair = dec.pair;
 
@@ -239,9 +239,9 @@
 
     // 自摸
     if (selfDraw) add(bd, '自摸', 1);
-    // 門前清 (all concealed) — 放槍胡才算純門清；門清自摸另計不求人
-    if (menClean && !selfDraw) add(bd, '門前清', 1);
-    if (menClean && selfDraw) add(bd, '不求人', 1); // 門清自摸 → 自摸1 + 不求人1
+    // 門清:放槍門清=門前清1;門清自摸=門前清1+自摸1+不求人1=3台(官方 Star31)
+    if (menClean) add(bd, '門前清', 1);
+    if (menClean && selfDraw) add(bd, '不求人', 1);
 
     // 花牌:每花 1 台;正花(對應座位)不額外,但花槓 +2
     const flowers = ctx.flowers || [];
@@ -260,6 +260,11 @@
 
     // 碰碰胡
     if (allPung) add(bd, '碰碰胡', 4);
+
+    // 槓:明槓(大明槓/加槓)1台、暗槓2台(官方 Star31)
+    for (const m of allMelds) {
+      if (m.type === 'kong') add(bd, m.subtype === 'an' ? '暗槓' : '明槓', m.subtype === 'an' ? 2 : 1);
+    }
 
     // 聽牌型(依胡的那張在此拆解中的位置):單吊/嵌張/邊張/兩面/雙碰
     const wait = classifyWait(dec, ctx.winTile);
@@ -287,7 +292,7 @@
     if (suitsUsed.size === 1 && !hasHonor) add(bd, '清一色', 8);
     else if (suitsUsed.size === 1 && hasHonor) add(bd, '混一色', 4);
     else if (suitsUsed.size === 0 && hasHonor) add(bd, '字一色', 16);
-    else if (suitsUsed.size === 2) add(bd, '缺一門', 1);   // 少一種花色
+    // 缺一門非官方台種,已移除
 
     // 三元牌 (中發白):大/小三元「取代」個別三元刻,不重複計
     const dragonPungs = pungs.filter((m) => DRAGON_NAMES[m.tiles[0]]);
@@ -308,9 +313,9 @@
       if (w.tiles[0] === roundWind) add(bd, '場風' + WIND_NAMES[w.tiles[0]], 1);
     }
 
-    // 莊家 / 連莊拉莊
+    // 莊家 / 連莊(官方 Star31:連N=N台,累加上限10台)
     if ((ctx.seatIndex || 0) === (ctx.dealerIndex)) add(bd, '莊家', 1);
-    if (ctx.streak && ctx.streak > 0) add(bd, `連${ctx.streak}拉${ctx.streak}`, ctx.streak * 2);
+    if (ctx.streak && ctx.streak > 0) add(bd, '連莊' + ctx.streak, Math.min(ctx.streak, 10));
 
     // 特殊得牌方式
     if (ctx.byRobKong) add(bd, '搶槓', 1);
@@ -324,9 +329,10 @@
       else if (selfDraw) add(bd, '地胡', 16);
       else add(bd, '人胡', 8);
     }
-    // 天聽/地聽(第一巡打完即宣告聽牌,之後胡)
+    // 聽牌宣告(鎖手):天聽8 / 地聽4 / 一般聽牌1(官方 Star31)
     if (ctx.ready === 'tian') add(bd, '天聽', 8);
     else if (ctx.ready === 'di') add(bd, '地聽', 4);
+    else if (ctx.ready === 'ready') add(bd, '聽牌', 1);
 
     const tai = bd.reduce((a, x) => a + x.tai, 0);
     return { tai, breakdown: bd, decomposition: dec };

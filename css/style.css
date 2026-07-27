@@ -1231,6 +1231,14 @@ body {
   box-shadow: 0 0 18px rgba(255, 210, 76, .85), 0 4px 8px rgba(0, 0, 0, .4);
 }
 .wind-card.east .wind-name { color: var(--neon-gold); }
+.wind-card.east { animation: windDealerPulse 1s ease-in-out infinite; }
+@keyframes windDealerPulse { 0%, 100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-4px) scale(1.06); } }
+.wind-dealer {
+  margin-top: 6px; font-family: "LXGW WenKai TC", "Microsoft JhengHei", serif; font-weight: 700;
+  font-size: clamp(13px, 3vmin, 20px); color: #201400; letter-spacing: .1em;
+  background: linear-gradient(180deg, #ffe38a, #e0b63c); border: 1px solid #a2201a;
+  border-radius: 5px; padding: 1px 10px; box-shadow: 0 0 14px rgba(255, 210, 76, .8);
+}
 .wind-say { margin-top: 16px; font-size: clamp(15px, 3.4vmin, 24px); font-weight: 900; color: #fff; }
 .wind-say b { color: var(--gold); text-shadow: var(--glow-gold); font-size: 1.25em; }
 
@@ -1249,6 +1257,37 @@ body {
 }
 #settingsPanel input[type=range] { flex: 1 1 auto; max-width: 160px; accent-color: #d4af37; }
 #settingsPanel .set-hint { font-size: 11px; color: #9ab0a6; }
+
+/* ============================================================
+   聽牌宣告(鎖手)+ 聽牌提示(丟哪張聽哪些+剩幾張)
+   ============================================================ */
+.act-btn.ready-btn {
+  background: radial-gradient(circle at 50% 24%, #e0be55, #9c6a12 78%);
+  border-color: #ffe9a8;
+}
+.act-btn.ready-prompt {
+  width: auto; min-width: 172px; height: 40px; padding: 0 14px;
+  border-radius: 7px; font-size: 13px; opacity: .92;
+  background: rgba(18, 48, 50, .92);
+}
+.tp-wait { display: inline-flex; flex-direction: column; align-items: center; gap: 1px; }
+.tp-wait .tp-count { font-size: 10px; font-weight: 800; line-height: 1; color: #ffe9a8; }
+.tp-wait .tp-count.dead { color: #ff8a7a; text-decoration: line-through; }
+.tenpai-bar .tp-label.nope { background: linear-gradient(180deg, #8a6a6a, #8f3a3a); color: #ffeaea; }
+
+/* 已聽鎖手:可打的牌高亮、其餘變灰不可點 */
+.hand .tile.ready-pick { filter: drop-shadow(0 0 9px #ffd24c) drop-shadow(0 4px 4px rgba(0, 0, 0, .3)); }
+.hand .tile.locked-out { filter: grayscale(.72) brightness(.6); pointer-events: none; }
+
+/* 已宣告聽牌徽章(公開) */
+.avatar .ready-badge {
+  position: absolute; top: -8px; left: 50%; transform: translateX(-50%); z-index: 9;
+  font-family: "LXGW WenKai TC", "Microsoft JhengHei", serif; font-weight: 700;
+  font-size: clamp(11px, 2.6vmin, 15px); color: #201400; letter-spacing: .06em;
+  background: linear-gradient(180deg, #ffe38a, #e0b63c); border: 1px solid #a2201a;
+  border-radius: 5px; padding: 0 7px; box-shadow: 0 2px 6px rgba(0, 0, 0, .45);
+}
+.sb-status.ready { background: #b8860b; border-color: #ffe9a8; color: #fff8e0; }
 
 @media (prefers-reduced-motion: reduce) {
   .toast, #rotate .phone { animation: none; }

@@ -325,14 +325,102 @@ test('online claim timeout passes remaining seats without stale-state access', (
   windowStub.__onlineClaimTest.setGame(game);
   windowStub.__onlineClaimTest.setSeats([0, 1, 2, 3].map((seat) => ({ seat, name: `P${seat}`, ai: false })));
   windowStub.__onlineClaimTest.hostClaims();
-  const timeout = timers.find((timer) => timer.delay === 9000);
-  assert.ok(timeout, 'claim timeout was not scheduled');
-  assert.doesNotThrow(() => timeout.fn());
+  // claim wait is now a 2500ms nudge loop that auto-passes stragglers after a few ticks
+  let guard = 0;
+  while (game.phase === 'claim' && guard++ < 12) {
+    const t = timers.filter((timer) => timer.delay === 2500).pop();
+    assert.ok(t, 'claim nudge/timeout was not scheduled');
+    const i = timers.indexOf(t); if (i >= 0) timers.splice(i, 1);
+    assert.doesNotThrow(() => t.fn());
+  }
 
   assert.equal(game.phase, 'act');
   assert.equal(game.pendingClaims, null);
   assert.equal(game.players[3].discards.at(-1), 'm5');
   assertInventory(game, 'online timeout resolution');
+});
+
+test('聽 declaration offers only tenpai-keeping discards then locks the hand', () => {
+  const game = rigGame({
+    hands: { 0: tiles('m1 m2 m3 m4 m5 m6 m7 m8 m9 p1 p2 p3 s1 s2 s3 z1 z2') },
+  });
+  game.players[0]._drawn = 'z2';
+  game.firstGoAround = false;   // plain 聽牌 (not 天/地聽)
+
+  const acts = game.actActions(0);
+  assert.ok(acts.some((a) => a.type === 'ready'), '聽 should be offered when tenpai-capable');
+  assert.ok(!acts.some((a) => a.type === 'tsumo'), 'not a win yet');
+
+  game.applyAct(0, { type: 'ready' });
+  assert.equal(game.readyPending[0], true);
+  const pending = game.actActions(0);
+  const discs = pending.filter((a) => a.type === 'discard').map((a) => a.tile).sort();
+  assert.deepEqual(discs, ['z1', 'z2'], 'after 聽 only tenpai-keeping discards are legal');
+  assert.ok(!pending.some((a) => a.type === 'ready'), 'cannot re-declare 聽');
+
+  game.applyAct(0, { type: 'discard', tile: 'z2' });
+  assert.equal(game.readyPending[0], false);
+  assert.equal(game.ready[0], 'ready');
+  assertInventory(game, '聽 declared');
+});
+
+test('a declared (locked) hand may only discard the drawn tile and cannot claim melds', () => {
+  const game = rigGame({
+    hands: { 0: tiles('m1 m2 m3 m4 m5 m6 m7 m8 m9 s1 s2 s3 z1 z1 p5 p5') },
+    discards: { 1: ['p5'] },
+    turn: 0,
+  });
+  game.ready[0] = 'ready';
+
+  // locked seat drew a fresh tile → only that tile is discardable
+  game.players[0].hand.push('s5'); game.players[0]._drawn = 's5';
+  const acts = game.actActions(0);
+  const discs = acts.filter((a) => a.type === 'discard').map((a) => a.tile);
+  assert.deepEqual(discs, ['s5'], 'locked hand discards only the drawn tile');
+  assert.ok(!acts.some((a) => a.type === 'ready' || a.type === 'ankong' || a.type === 'addkong'));
+  game.players[0].hand.pop(); game.players[0]._drawn = null;
+
+  // locked seat is offered hu but never pung on someone else's discard
+  openDiscardClaim(game, 1, 'p5');
+  const claim0 = game.claimActions(0);
+  assert.ok(claim0.some((o) => o.type === 'hu'), 'ready seat can still 胡');
+  assert.ok(!claim0.some((o) => o.type === 'pung'), 'ready seat cannot 碰 (hand is locked)');
+  assertInventory(game, 'locked hand claim');
+});
+
+test('scoring: 聽牌=1台, 門清自摸=3台, 暗槓=2台, 連莊N=N台, 缺一門 removed', () => {
+  const ready1 = MJ.scoreWin(tiles('m1 m2 m3 m4 m5 m6 m7 m8 m9 p1 p2 p3 s1 s2 s3 z1 z1'),
+    { seatIndex: 1, dealerIndex: 0, roundWind: 'z1', selfDraw: false, winTile: 'z1', flowers: [], exposedMelds: [], ready: 'ready' });
+  assert.ok(ready1.breakdown.some((b) => b.name === '聽牌' && b.tai === 1), '聽牌 1台');
+
+  const menClean = MJ.scoreWin(tiles('m1 m2 m3 m4 m5 m6 m7 m8 m9 p1 p2 p3 s1 s2 s3 z1 z1'),
+    { seatIndex: 1, dealerIndex: 0, roundWind: 'z1', selfDraw: true, winTile: 'z1', flowers: [], exposedMelds: [] });
+  const mc = menClean.breakdown.reduce((m, b) => (m[b.name] = b.tai, m), {});
+  assert.equal(mc['門前清'], 1); assert.equal(mc['自摸'], 1); assert.equal(mc['不求人'], 1);   // 門清自摸=3
+
+  const kong = MJ.scoreWin(tiles('m2 m3 m4 p1 p2 p3 p4 p5 p6 s1 s2 s3 z1 z1'),
+    { seatIndex: 1, dealerIndex: 0, roundWind: 'z1', selfDraw: false, winTile: 'z1', flowers: [],
+      exposedMelds: [{ type: 'kong', subtype: 'an', tiles: ['m6', 'm6', 'm6', 'm6'], concealed: true }] });
+  assert.ok(kong.breakdown.some((b) => b.name === '暗槓' && b.tai === 2), '暗槓 2台');
+
+  const streak = MJ.scoreWin(tiles('m1 m2 m3 m4 m5 m6 m7 m8 m9 p1 p2 p3 s1 s2 s3 z1 z1'),
+    { seatIndex: 0, dealerIndex: 0, roundWind: 'z1', selfDraw: false, winTile: 'z1', flowers: [], exposedMelds: [], streak: 3 });
+  assert.ok(streak.breakdown.some((b) => b.name === '連莊3' && b.tai === 3), '連莊3 = 3台 (非 2N)');
+
+  // 缺一門 (two suits, no honors kept as pair) must NOT appear
+  const twoSuit = MJ.scoreWin(tiles('m1 m2 m3 m4 m5 m6 m7 m8 m9 p1 p2 p3 p4 p5 p6 s1 s1'),
+    { seatIndex: 1, dealerIndex: 0, roundWind: 'z1', selfDraw: false, winTile: 's1', flowers: [], exposedMelds: [] });
+  assert.ok(!twoSuit.breakdown.some((b) => b.name === '缺一門'), '缺一門 已移除');
+});
+
+test('決莊抽風完全隨機:四家做莊機率均勻(不偏袒任何座位)', () => {
+  const N = 60000;
+  const dealt = [0, 0, 0, 0];
+  for (let i = 0; i < N; i++) dealt[MJ.shuffle(['z1', 'z2', 'z3', 'z4']).indexOf('z1')]++;
+  for (let s = 0; s < 4; s++) {
+    const pct = dealt[s] / N;
+    assert.ok(Math.abs(pct - 0.25) < 0.015, `seat ${s} 做莊 ${(pct * 100).toFixed(2)}% 應接近 25%`);
+  }
 });
 
 let failures = 0;

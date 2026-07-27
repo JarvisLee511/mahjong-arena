@@ -91,19 +91,50 @@
     requestAnimationFrame(fitTableGeometry);
   }
 
-  // #5 聽牌提示列:顯示「聽」+ 聽的牌漂在旁邊
+  // 某張牌在自己看得到的範圍還剩幾張(4 − 手牌+四家牌河+全部亮出的副露)
+  function countSeen(v, tile) {
+    let n = 0;
+    for (const t of (v.myHand || [])) if (t === tile) n++;
+    for (const p of (v.players || [])) {
+      for (const t of (p.discards || [])) if (t === tile) n++;
+      for (const m of (p.melds || [])) for (const t of (m.tiles || [])) if (t === tile) n++;
+    }
+    return n;
+  }
+  function waitChip(v, t) {
+    const chip = el('div', 'tp-wait');
+    const mini = el('div', 'tile tp-tile'); mini.innerHTML = window.MJArt.face(t); chip.appendChild(mini);
+    const left = Math.max(0, 4 - countSeen(v, t));
+    chip.appendChild(el('span', 'tp-count' + (left === 0 ? ' dead' : ''), '剩' + left));
+    return chip;
+  }
+  // #5 聽牌提示:選起一張手牌 → 顯示「打這張聽哪幾張 + 各剩幾張」;未選則顯示目前聽的牌
   function renderTenpai(v) {
     const bar = $('#tenpaiBar'); if (!bar) return;
     bar.innerHTML = '';
     const hasActionPrompt = $('#actions') && $('#actions').childElementCount > 0;
-    const show = v.waits && v.waits.length && v.phase === 'act' && v.turn === v.mySeat;
+    const myTurn = v.phase === 'act' && v.turn === v.mySeat;
+    if (!myTurn) { bar.classList.remove('on'); bar.classList.remove('with-actions'); return; }
+    const myMelds = (v.players[v.mySeat] && v.players[v.mySeat].melds) || [];
+    const selTile = (selected && selected.indexOf('#') >= 0) ? selected.slice(0, selected.indexOf('#')) : null;
+    if (selTile) {                        // 丟哪一張 → 聽哪幾張
+      const rest = (v.myHand || []).slice(); const i = rest.indexOf(selTile); if (i >= 0) rest.splice(i, 1);
+      const waits = window.MJ.winningTiles(rest, myMelds);
+      bar.classList.add('on'); bar.classList.toggle('with-actions', hasActionPrompt);
+      if (waits.length) {
+        bar.appendChild(el('span', 'tp-label', '打' + window.MJ.tileName(selTile) + '聽'));
+        waits.forEach((t) => bar.appendChild(waitChip(v, t)));
+      } else {
+        bar.appendChild(el('span', 'tp-label nope', '打' + window.MJ.tileName(selTile) + ' · 不聽'));
+      }
+      return;
+    }
+    const show = v.waits && v.waits.length;   // 未選牌:顯示目前聽(點手牌看每種打法)
     bar.classList.toggle('on', !!show);
     bar.classList.toggle('with-actions', !!show && hasActionPrompt);
     if (!show) return;
     bar.appendChild(el('span', 'tp-label', '聽'));
-    v.waits.forEach((t) => {
-      const mini = el('div', 'tile tp-tile'); mini.innerHTML = window.MJArt.face(t); bar.appendChild(mini);
-    });
+    v.waits.forEach((t) => bar.appendChild(waitChip(v, t)));
   }
 
   function renderOpp(v, p, pos) {
@@ -126,6 +157,7 @@
     const sc = el('div', 'sc' + (sp.score > 0 ? ' pos' : sp.score < 0 ? ' neg' : ''), (sp.score >= 0 ? '+' : '') + sp.score);
     av.appendChild(sc);
     if (p === v.dealerIndex && v.streak > 0) av.appendChild(el('div', 'streak', '連' + v.streak));
+    if (sp.declared) av.appendChild(el('div', 'ready-badge', '聽'));   // 已宣告聽牌(公開)
     wrap.appendChild(av);
     const backs = el('div', 'backs');
     backs.classList.toggle('short', sp.handCount <= 8);
@@ -153,6 +185,7 @@
     bar.appendChild(el('span', 'sb-wind' + (dealer ? ' dealer' : ''), WIND[meWind] + (dealer ? ' 莊' : '')));
     const roundTxt = v.phase === 'swap' ? '換三張' : (WIND[v.roundWind] + '風圈' + (v.streak ? ' · 連' + v.streak : ''));
     bar.appendChild(el('span', 'sb-info', roundTxt));
+    if (v.locked) bar.appendChild(el('span', 'sb-status ready', '已聽'));
     if (v.furiten) bar.appendChild(el('span', 'sb-status', '過水'));
     bar.appendChild(el('span', 'sb-coin', '籌碼 ' + (me.score >= 0 ? '+' : '') + me.score));
   }
@@ -173,6 +206,9 @@
     const swapping = v.phase === 'swap' && v.swap && !v.swap.done;
     const interactive = v.phase === 'act' && v.turn === v.mySeat && v.myActions &&
       v.myActions.some((a) => a.type === 'discard');
+    // 聽牌鎖手 / 剛宣告聽:只有特定牌可打(其餘變灰不可點)
+    const legalDiscards = new Set((v.myActions || []).filter((a) => a.type === 'discard').map((a) => a.tile));
+    const restricted = !!(v.readyPending || v.locked);
     // #6 可吃碰的牌閃爍:算出參與吃/碰/槓的手牌
     const flashSet = new Set();
     if (v.myClaims && v.claimTile) {
@@ -197,15 +233,17 @@
       if (v.hint && v.hint.includes(t)) cls.push('hintable');
       if (flashSet.has(t)) cls.push('flash');
       if (isDrawn) { cls.push('drawn'); if (v.waits && v.waits.length && selected === null) cls.push('reveal'); }
+      const canDiscardThis = !restricted || legalDiscards.has(t);
+      if (interactive && restricted) cls.push(legalDiscards.has(t) ? 'ready-pick' : 'locked-out');
       const e = tileEl(t, cls.join(' '));
       if (swapping) e.addEventListener('click', () => {
         if (swapSel.has(key)) swapSel.delete(key);
         else if (swapSel.size < 3) swapSel.add(key);
         renderView(v, handlers);   // refresh hand + the confirm button count
       });
-      else if (interactive) e.addEventListener('click', () => {
+      else if (interactive && canDiscardThis) e.addEventListener('click', () => {
         if (selected === key) { selected = null; handlers.onAct && handlers.onAct({ type: 'discard', tile: t }); }
-        else { selected = key; renderSelf(v, handlers); }
+        else { selected = key; renderSelf(v, handlers); renderTenpai(v); }
       });
       hand.appendChild(e);
     };
@@ -308,10 +346,11 @@
     const topMelds = topSeat.querySelector('.opp-melds');
     const topFlowers = topSeat.querySelector('.opp-flowers');
 
+    const topAvatarRect = topSeat.querySelector('.avatar').getBoundingClientRect();
     if (topMelds) {
-      // 對家副露放牌背「右邊」的空地(那整片是空的),保持大小,塞不下才縮
+      // 對家吃碰槓放頭像「右側」空地,絕不壓到大頭(clear of the avatar);塞不下才縮
       topMelds.style.setProperty('--opp-tile-scale', '.40');
-      const leftEdge = topBacksRect.right + edgeGap;
+      const leftEdge = Math.max(topBacksRect.right, topAvatarRect.right) + edgeGap;
       const available = Math.max(1, viewportRight - leftEdge);
       if (topMelds.offsetWidth > available) {
         const scale = Math.max(.24, .40 * available / topMelds.offsetWidth);
@@ -320,9 +359,9 @@
       topMelds.style.left = `${(leftEdge - topSeatRect.left).toFixed(2)}px`;
     }
     if (topFlowers) {
-      const meldsRight = topMelds ? topMelds.getBoundingClientRect().right : 0;
-      const leftEdge = Math.max(farRight + edgeGap, topBacksRect.right + edgeGap, meldsRight + edgeGap);
-      const targetLeft = Math.min(viewportRight - topFlowers.offsetWidth, leftEdge);
+      // 補花放頭像「左側」空地(與右側副露分列左右,中間留給大頭)
+      const rightEdge = Math.min(topBacksRect.left, topAvatarRect.left) - edgeGap;
+      const targetLeft = Math.max(viewportLeft, rightEdge - topFlowers.offsetWidth);
       topFlowers.style.right = 'auto';
       topFlowers.style.left = `${(targetLeft - topSeatRect.left).toFixed(2)}px`;
     }
@@ -473,6 +512,8 @@
       if (ts) mk('自摸', 'hu', () => handlers.onAct(ts));
       A.filter((a) => a.type === 'ankong').forEach((a) => mk('暗槓', '', () => handlers.onAct(a), tName(a.tile)));
       A.filter((a) => a.type === 'addkong').forEach((a) => mk('加槓', '', () => handlers.onAct(a), tName(a.tile)));
+      if (A.some((a) => a.type === 'ready')) mk('聽', 'ready-btn', () => handlers.onAct({ type: 'ready' }), '宣告+1台·鎖手');
+      if (v.readyPending) { const b = el('button', 'act-btn ready-prompt', '選一張保持聽牌的牌打出 ▶'); b.disabled = true; bar.appendChild(b); }
     } else if (v.phase === 'claim' && v.claimSubmitted) {
       const waiting = el('button', 'act-btn claim-wait', '已選擇，等待其他家');
       waiting.disabled = true;
@@ -765,14 +806,14 @@
     cards.forEach((k, i) => setTimeout(() => {
       k.tile.classList.add('flip');
       k.tile.textContent = WIND[perm[k.seat]];
-      if (perm[k.seat] === 'z1') k.c.classList.add('east');
+      if (perm[k.seat] === 'z1') { k.c.classList.add('east'); k.c.appendChild(el('div', 'wind-dealer', '莊')); }
       MJSound.fx('tick');
       if (i === 3) {
         say.innerHTML = '';
         say.append(el('b', '', names[dealerSeat]), document.createTextNode(' 抽到東風,做莊!'));
         setTimeout(() => { ov.classList.remove('on'); cb && cb(); }, 1400);
       }
-    }, 450 + i * 420));
+    }, 380 + i * 360));
   }
 
   // ⑩ 喊話泡泡(依螢幕座位定位)
@@ -856,7 +897,10 @@
         melds: MJView.maskMelds(G.players[p].melds, p !== 0 && G.phase !== 'over'),
         flowers: G.players[p].flowers,
         discards: G.players[p].discards,
+        declared: !!G.ready[p],
       })),
+      readyPending: !!G.readyPending[0],
+      locked: !!G.ready[0],
       myHand: me.hand.slice(),
       myDrawn: (G.phase === 'act' && G.turn === 0) ? me._drawn : null,
       myActions: (G.phase === 'act' && G.turn === 0) ? G.actActions(0) : null,
@@ -1034,7 +1078,7 @@
     else if (type === 'kong') { MJView.actionFX('kong', NAMES[p.player] + ' 槓!'); MJSound.fx('kong'); MJSound.voice('kong'); charSay(p.player, 'kong', 0.7, 'happy'); }
     else if (type === 'chow') { MJView.actionFX('chow', NAMES[p.player] + ' 吃'); MJSound.fx('chow'); MJSound.voice('chow'); charSay(p.player, 'chow', 0.4); }
     else if (type === 'swap') { MJView.toast('換牌完成 · 第' + p.round + '輪'); MJSound.fx('chow'); }
-    else if (type === 'ready') { MJView.actionFX('ready', (NAMES[p.player] || '') + (p.kind === 'tian' ? ' 天聽!' : ' 地聽!')); MJSound.fx('tick'); charSay(p.player, 'ready', 0.8, 'smug'); }
+    else if (type === 'ready') { const kw = p.kind === 'tian' ? ' 天聽!' : p.kind === 'di' ? ' 地聽!' : ' 聽!'; MJView.actionFX('ready', (NAMES[p.player] || '') + kw); MJSound.fx('tick'); charSay(p.player, 'ready', 0.8, 'smug'); }
     else if (type === 'win') { MJSound.fx('hu'); MJSound.voice(p.selfDraw ? 'tsumo' : 'hu'); }
   }
 

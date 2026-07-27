@@ -58,7 +58,8 @@
       this.firstGoAround = true;    // for 天/地/人胡
       this.kongPending = false;     // next draw is a replacement (槓上開花)
       this.furiten = [false, false, false, false];   // 過水:放棄可胡後不能再放槍胡,到自己摸牌才解
-      this.ready = [null, null, null, null];          // 天聽/地聽:'tian'|'di'
+      this.ready = [null, null, null, null];          // 已宣告聽牌(鎖手):'tian'|'di'|'ready'
+      this.readyPending = [false, false, false, false]; // 剛按「聽」、還沒打出宣告牌
       this._deal();
       // The visible wall starts after the initial deal. From here on the UI can
       // remove normal draws from one end and replacement draws from the other.
@@ -171,26 +172,53 @@
     _concealed(p) { return this.players[p].hand; }
     _exposedCount(p) { return this.players[p].melds.length; }
 
+    // 打掉哪些手牌之後「仍然聽牌」— 供「聽」宣告與聽牌提示使用
+    tenpaiKeepingDiscards(p) {
+      const pl = this.players[p];
+      const out = [];
+      for (const t of new Set(pl.hand)) {
+        const rest = pl.hand.slice(); rest.splice(rest.indexOf(t), 1);
+        if (MJ.winningTiles(rest, pl.melds).length) out.push(t);
+      }
+      return out;
+    }
+    // 宣告牌剛打出(已 push 進 discards)時判定聽牌台種
+    _readyTier(p) {
+      if (this.firstGoAround && p === this.dealerIndex && this.players[p].discards.length === 1) return 'tian';
+      if (this.firstGoAround) return 'di';
+      return 'ready';
+    }
+
     // ---------- actions available in phase 'act' --------------
     actActions(p = this.turn) {
       if (this.phase !== 'act' || p !== this.turn) return [];
       const pl = this.players[p];
       const acts = [];
-      // discard any tile
+      const canWin = MJ.canWin(pl.hand, pl.melds.length);
+      // 已宣告聽牌 → 鎖手:只能自摸或打出「摸到的那張」,不能換牌
+      if (this.ready[p]) {
+        if (canWin) acts.push({ type: 'tsumo' });
+        if (pl._drawn != null) acts.push({ type: 'discard', tile: pl._drawn });
+        return acts;
+      }
+      // 剛按「聽」尚未打出 → 只能自摸或打出「打完仍聽牌」的牌
+      if (this.readyPending[p]) {
+        if (canWin) acts.push({ type: 'tsumo' });
+        this.tenpaiKeepingDiscards(p).forEach((t) => acts.push({ type: 'discard', tile: t }));
+        return acts;
+      }
+      // 一般回合:任意打牌
       for (const t of new Set(pl.hand)) acts.push({ type: 'discard', tile: t });
       if (this.mustDiscardAfterClaim) return acts;
-      // self win (自摸)
-      if (MJ.canWin(pl.hand, pl.melds.length)) acts.push({ type: 'tsumo' });
-      // 暗槓 (4 concealed identical)
+      if (canWin) acts.push({ type: 'tsumo' });
       const cnt = {};
       for (const t of pl.hand) cnt[t] = (cnt[t] || 0) + 1;
       for (const t in cnt) if (cnt[t] === 4) acts.push({ type: 'ankong', tile: t });
-      // 加槓 (draw matches an existing pung)
       for (const m of pl.melds) {
-        if (m.type === 'pung' && pl.hand.includes(m.tiles[0])) {
-          acts.push({ type: 'addkong', tile: m.tiles[0] });
-        }
+        if (m.type === 'pung' && pl.hand.includes(m.tiles[0])) acts.push({ type: 'addkong', tile: m.tiles[0] });
       }
+      // 可宣告聽牌(有某張打出後仍聽牌,且尚未聽)
+      if (this.tenpaiKeepingDiscards(p).length) acts.push({ type: 'ready' });
       return acts;
     }
 
@@ -207,20 +235,25 @@
       if (action.type === 'discard') {
         const idx = pl.hand.indexOf(action.tile);
         if (idx < 0) throw new Error('no such tile');
-        if (this.ready[p] && pl._drawn && action.tile !== pl._drawn) this.ready[p] = null;
         pl.hand.splice(idx, 1);
         pl._drawn = null;
         this.mustDiscardAfterClaim = false;
         this.lastDiscard = { tile: action.tile, from: p };
         pl.discards.push(action.tile);
         this.kongPending = false;
-        // 天聽/地聽:第一巡未被吃碰打斷、打完即聽(莊=天聽,閒=地聽)
-        if (this.firstGoAround && !this.ready[p] && MJ.isTenpai(pl.hand, pl.melds)) {
-          this.ready[p] = (p === this.dealerIndex) ? 'tian' : 'di';
+        // 剛按「聽」→ 這張是宣告牌,鎖定聽牌台種(天聽/地聽/一般聽牌)
+        if (this.readyPending[p]) {
+          this.readyPending[p] = false;
+          this.ready[p] = this._readyTier(p);
           this._emit('ready', { player: p, kind: this.ready[p] });
         }
         this._emit('discard', { player: p, tile: action.tile });
         this._openClaims(p, action.tile);
+        return;
+      }
+      if (action.type === 'ready') {
+        // 宣告聽牌:停留在同一家的 act,接著只能打出「保持聽牌」的牌完成宣告
+        this.readyPending[p] = true;
         return;
       }
       if (action.type === 'tsumo') {
@@ -258,7 +291,8 @@
         const list = [];
         // 胡 (ron) — 搶槓 only allows hu;過水中不能放槍胡
         if (!this.furiten[p] && MJ.canWin(pl.hand.concat([tile]), pl.melds.length)) list.push({ type: 'hu' });
-        if (!robKong) {
+        // 已宣告聽牌者鎖手,只能胡,不能吃碰槓
+        if (!robKong && !this.ready[p]) {
           const same = pl.hand.filter((t) => t === tile).length;
           if (same >= 2) list.push({ type: 'pung' });
           if (same >= 3) list.push({ type: 'kong' }); // 大明槓
@@ -495,6 +529,7 @@
         kongPending: this.kongPending,
         furiten: this.furiten,
         ready: this.ready,
+        readyPending: this.readyPending,
         wallStartFront: this.wallStartFront,
         wallStartBack: this.wallStartBack,
         wallStart: this.wallStart,
@@ -536,6 +571,7 @@
       game.kongPending = !!state.kongPending;
       game.furiten = state.furiten || [false, false, false, false];
       game.ready = state.ready || [null, null, null, null];
+      game.readyPending = state.readyPending || [false, false, false, false];
       game.wallStartFront = state.wallStartFront;
       game.wallStartBack = state.wallStartBack;
       game.wallStart = state.wallStart;
