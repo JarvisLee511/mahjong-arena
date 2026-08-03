@@ -2,6 +2,8 @@
 
 線上**台灣 16 張麻將** web app —— 開房給 6 位數房號、朋友加入即時對戰、空位自動 AI 補位;支援**換三張(美麻)**開局、託管、一圈/一將賽制與底注選擇。純前端 vanilla JS + Supabase Realtime,無需後端伺服器。
 
+**🌐 線上玩:<https://jarvislee511.github.io/mahjong-arena/>**
+
 > Taiwanese 16-tile Mahjong in the browser. Create a room, share the 6-digit code, play in real time with friends (empty seats filled by AI). Vanilla JS + Supabase Realtime, fully static.
 
 ## 玩法
